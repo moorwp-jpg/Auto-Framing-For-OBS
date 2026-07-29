@@ -304,11 +304,13 @@ std::vector<PersonTrack> ByteTrackTracker::update(const std::vector<Detection>& 
     low_detection_indices.reserve(detections.size());
 
     for (size_t i = 0; i < detections.size(); ++i) {
-        if (!detections[i].box.valid() || detections[i].confidence < config_.track_low_thresh) {
+        const Detection& detection = detections[i];
+        if (!detection.box.valid() || !std::isfinite(detection.confidence) || detection.confidence < 0.0f ||
+            detection.confidence > 1.0f || detection.confidence < config_.track_low_thresh) {
             continue;
         }
 
-        if (detections[i].confidence >= config_.track_high_thresh) {
+        if (detection.confidence >= config_.track_high_thresh) {
             high_detection_indices.push_back(i);
         } else {
             ++diagnostics_.low_confidence_candidates;

@@ -347,6 +347,36 @@ void invalid_detections_are_rejected() {
     require(tracks.empty(), "non-finite detection geometry is rejected");
 }
 
+void invalid_confidence_is_rejected_without_corrupting_tracks() {
+    const std::vector<float> invalid_confidences = {
+        std::numeric_limits<float>::quiet_NaN(),
+        std::numeric_limits<float>::infinity(),
+        -std::numeric_limits<float>::infinity(),
+        -0.01f,
+        1.01f,
+    };
+
+    for (const float invalid_confidence : invalid_confidences) {
+        ByteTrackTracker creation_tracker(test_config());
+        require(creation_tracker.update({detection({100.0f, 80.0f, 60.0f, 160.0f}, invalid_confidence)}, 1000000000ULL)
+                    .empty(),
+                "invalid confidence cannot create a track");
+
+        ByteTrackTracker update_tracker(test_config());
+        const std::vector<PersonTrack> initial =
+            update_tracker.update({detection({100.0f, 80.0f, 60.0f, 160.0f}, 0.90f)}, 1000000000ULL);
+        require(initial.size() == 1, "valid confidence creates the reference track");
+        const int id = initial.front().id;
+
+        const std::vector<PersonTrack> updated =
+            update_tracker.update({detection({101.0f, 80.0f, 60.0f, 160.0f}, invalid_confidence)}, 1010000000ULL);
+        require(updated.empty(), "invalid confidence cannot update a nearby active track");
+        const PersonTrack safe_track = debug_track_by_id(update_tracker, id);
+        require(safe_track.id == id && safe_track.confidence == 0.90f,
+                "invalid confidence leaves the existing track confidence safe");
+    }
+}
+
 } // namespace
 
 int main() {
@@ -365,6 +395,7 @@ int main() {
         bounded_occlusion_hold_expires();
         recently_lost_recovery_is_identity_safe();
         invalid_detections_are_rejected();
+        invalid_confidence_is_rejected_without_corrupting_tracks();
     } catch (const std::exception& error) {
         std::cerr << "bytetrack_tracker_tests failed: " << error.what() << '\n';
         return 1;
