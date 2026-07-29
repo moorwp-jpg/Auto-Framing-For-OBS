@@ -1,0 +1,66 @@
+name: CI
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  windows-core:
+    name: Core Build & Tests (Windows)
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          persist-credentials: false
+      - name: Configure, build, and test portable core
+        shell: pwsh
+        run: ./scripts/verify_repo.ps1 -Clean -SkipFormat
+
+  cpp-format:
+    name: C++ Format
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          persist-credentials: false
+      - name: Install LLVM 22
+        shell: pwsh
+        run: winget install --id LLVM.LLVM --exact --version 22.1.3 --accept-package-agreements --accept-source-agreements --disable-interactivity
+      - name: Check formatting
+        shell: pwsh
+        run: ./scripts/check_format.ps1
+
+  powershell-syntax:
+    name: PowerShell Syntax
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          persist-credentials: false
+      - name: Parse scripts without executing them
+        shell: pwsh
+        run: ./scripts/check_powershell_syntax.ps1
+
+  linux-core:
+    name: Core Build & Tests (Linux, advisory)
+    runs-on: ubuntu-latest
+    continue-on-error: true
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          persist-credentials: false
+      - name: Configure
+        run: cmake -S . -B build_linux -DBUILD_PLUGIN=OFF -DENABLE_TESTS=ON -DCMAKE_BUILD_TYPE=RelWithDebInfo
+      - name: Build
+        run: cmake --build build_linux --config RelWithDebInfo
+      - name: Test
+        run: ctest --test-dir build_linux -C RelWithDebInfo --output-on-failure

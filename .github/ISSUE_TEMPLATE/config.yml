@@ -1,0 +1,5 @@
+blank_issues_enabled: false
+contact_links:
+  - name: Support and troubleshooting
+    url: https://github.com/moorwp-jpg/OBS-Auto-Framing/blob/main/SUPPORT.md
+    about: Read support guidance before opening an issue.
