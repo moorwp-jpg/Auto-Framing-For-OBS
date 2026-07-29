@@ -57,6 +57,7 @@ struct ReacquisitionRuntime {
     uint32_t attempts = 0;
     uint32_t successes = 0;
     uint32_t failures = 0;
+    bool failure_latched = false;
 };
 
 inline ReacquisitionConfig public_reacquisition_config(uint32_t configured_interval_ms) {
@@ -97,6 +98,15 @@ inline void update_reacquisition(ReacquisitionRuntime& runtime, const Reacquisit
     }
 
     const bool requested = reacquisition_requested(input);
+    if (runtime.failure_latched) {
+        if (requested) {
+            runtime.reason = "reacquisition timeout; waiting for trigger clear";
+            return;
+        }
+        runtime.failure_latched = false;
+        runtime.reason = "stable tracking";
+    }
+
     if (runtime.state == ReacquisitionState::Stable && requested) {
         runtime.state = input.occlusion_hold ? ReacquisitionState::OcclusionHold : ReacquisitionState::Uncertain;
         runtime.reason = reacquisition_reason(input);
@@ -110,8 +120,12 @@ inline void update_reacquisition(ReacquisitionRuntime& runtime, const Reacquisit
         (elapsed_ms(runtime.state_started_ns, input.now_ns) >= config.maximum_burst_ms ||
          runtime.attempts >= config.maximum_attempts)) {
         ++runtime.failures;
-        runtime = {
-            ReacquisitionState::Stable, "reacquisition bounded timeout", 0, 0, 0, runtime.successes, runtime.failures};
+        runtime.state = ReacquisitionState::Stable;
+        runtime.reason = "reacquisition bounded timeout";
+        runtime.state_started_ns = 0;
+        runtime.stable_since_ns = 0;
+        runtime.attempts = 0;
+        runtime.failure_latched = true;
         return;
     }
 
@@ -137,7 +151,12 @@ inline void update_reacquisition(ReacquisitionRuntime& runtime, const Reacquisit
         runtime.stable_since_ns = input.now_ns;
     if (elapsed_ms(runtime.stable_since_ns, input.now_ns) >= config.stable_recovery_ms) {
         ++runtime.successes;
-        runtime = {ReacquisitionState::Stable, "stable tracking", 0, 0, 0, runtime.successes, runtime.failures};
+        runtime.state = ReacquisitionState::Stable;
+        runtime.reason = "stable tracking";
+        runtime.state_started_ns = 0;
+        runtime.stable_since_ns = 0;
+        runtime.attempts = 0;
+        runtime.failure_latched = false;
     }
 }
 
