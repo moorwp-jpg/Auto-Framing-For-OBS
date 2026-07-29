@@ -160,7 +160,10 @@ function Validate-StagedFiles {
         throw "Package validation failed; unexpected files entered the release staging area: $($relativeUnexpectedFiles -join ', ')"
     }
 
-    $blockedExtensions = @(".exe", ".pdb", ".ilk", ".exp", ".lib", ".obj", ".iobj", ".ipdb")
+    $blockedExtensions = @(
+        ".exe", ".pdb", ".ilk", ".exp", ".lib", ".obj", ".iobj", ".ipdb",
+        ".pt", ".zip", ".sha256"
+    )
     $blockedFiles = @($stagedFiles |
         Where-Object { $blockedExtensions -contains $_.Extension.ToLowerInvariant() })
 
@@ -231,7 +234,10 @@ function Validate-ZipEntries {
             throw "Package validation failed; zip contains unexpected files: $($unexpectedEntries.FullName -join ', ')"
         }
 
-        $blockedExtensions = @(".exe", ".pdb", ".ilk", ".exp", ".lib", ".obj", ".iobj", ".ipdb")
+        $blockedExtensions = @(
+            ".exe", ".pdb", ".ilk", ".exp", ".lib", ".obj", ".iobj", ".ipdb",
+            ".pt", ".zip", ".sha256"
+        )
         $blockedEntries = @($fileEntries | Where-Object {
             $extension = [System.IO.Path]::GetExtension($_.FullName).ToLowerInvariant()
             $blockedExtensions -contains $extension
