@@ -315,8 +315,7 @@ void bounded_occlusion_hold_expires() {
     ByteTrackTracker tracker(config);
     constexpr uint64_t start_ns = 1000000000ULL;
 
-    std::vector<PersonTrack> tracks =
-        tracker.update({detection({100.0f, 80.0f, 60.0f, 160.0f}, 0.90f)}, start_ns);
+    std::vector<PersonTrack> tracks = tracker.update({detection({100.0f, 80.0f, 60.0f, 160.0f}, 0.90f)}, start_ns);
     require(tracks.size() == 1, "occlusion test creates a track");
     tracks = tracker.update({}, start_ns + 50000000ULL);
     require(tracks.size() == 1 && tracks.front().occlusion_hold, "brief occlusion keeps the predicted track");
@@ -328,8 +327,7 @@ void bounded_occlusion_hold_expires() {
 void recently_lost_recovery_is_identity_safe() {
     ByteTrackTracker tracker(test_config());
     constexpr uint64_t start_ns = 1000000000ULL;
-    std::vector<PersonTrack> tracks =
-        tracker.update({detection({100.0f, 80.0f, 60.0f, 160.0f}, 0.90f)}, start_ns);
+    std::vector<PersonTrack> tracks = tracker.update({detection({100.0f, 80.0f, 60.0f, 160.0f}, 0.90f)}, start_ns);
     const int id = tracks.front().id;
     tracker.update({}, start_ns + 10000000ULL);
 

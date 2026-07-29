@@ -18,8 +18,7 @@ struct Color {
     float a;
 };
 
-Rect source_to_output_rect(const Rect& rect, const Rect& crop, uint32_t output_width, uint32_t output_height)
-{
+Rect source_to_output_rect(const Rect& rect, const Rect& crop, uint32_t output_width, uint32_t output_height) {
     if (!rect.valid() || !crop.valid()) {
         return {};
     }
@@ -34,8 +33,7 @@ Rect source_to_output_rect(const Rect& rect, const Rect& crop, uint32_t output_w
     };
 }
 
-void set_solid_color(gs_effect_t* solid, Color color)
-{
+void set_solid_color(gs_effect_t* solid, Color color) {
     vec4 value;
     value.x = color.r;
     value.y = color.g;
@@ -44,8 +42,7 @@ void set_solid_color(gs_effect_t* solid, Color color)
     gs_effect_set_vec4(gs_effect_get_param_by_name(solid, "color"), &value);
 }
 
-void draw_filled_rect(float x, float y, float width, float height, gs_effect_t* solid, Color color)
-{
+void draw_filled_rect(float x, float y, float width, float height, gs_effect_t* solid, Color color) {
     if (width <= 0.0f || height <= 0.0f || solid == nullptr) {
         return;
     }
@@ -59,8 +56,7 @@ void draw_filled_rect(float x, float y, float width, float height, gs_effect_t* 
     gs_matrix_pop();
 }
 
-void draw_rect_outline(const Rect& rect, float thickness, gs_effect_t* solid, Color color)
-{
+void draw_rect_outline(const Rect& rect, float thickness, gs_effect_t* solid, Color color) {
     if (!rect.valid() || solid == nullptr) {
         return;
     }
@@ -72,26 +68,19 @@ void draw_rect_outline(const Rect& rect, float thickness, gs_effect_t* solid, Co
     draw_filled_rect(rect.right() - line, rect.y, line, rect.height, solid, color);
 }
 
-bool digit_segment_enabled(int digit, int segment)
-{
+bool digit_segment_enabled(int digit, int segment) {
     static constexpr bool segments[10][7] = {
-        {true, true, true, true, true, true, false},
-        {false, true, true, false, false, false, false},
-        {true, true, false, true, true, false, true},
-        {true, true, true, true, false, false, true},
-        {false, true, true, false, false, true, true},
-        {true, false, true, true, false, true, true},
-        {true, false, true, true, true, true, true},
-        {true, true, true, false, false, false, false},
-        {true, true, true, true, true, true, true},
-        {true, true, true, true, false, true, true},
+        {true, true, true, true, true, true, false},   {false, true, true, false, false, false, false},
+        {true, true, false, true, true, false, true},  {true, true, true, true, false, false, true},
+        {false, true, true, false, false, true, true}, {true, false, true, true, false, true, true},
+        {true, false, true, true, true, true, true},   {true, true, true, false, false, false, false},
+        {true, true, true, true, true, true, true},    {true, true, true, true, false, true, true},
     };
 
     return digit >= 0 && digit <= 9 && segment >= 0 && segment < 7 && segments[digit][segment];
 }
 
-void draw_digit(int digit, float x, float y, float scale, gs_effect_t* solid, Color color)
-{
+void draw_digit(int digit, float x, float y, float scale, gs_effect_t* solid, Color color) {
     const float t = std::max(1.0f, scale);
     const float w = 3.0f * scale;
     const float h = 2.0f * scale;
@@ -108,19 +97,13 @@ void draw_digit(int digit, float x, float y, float scale, gs_effect_t* solid, Co
 
     for (int segment = 0; segment < 7; ++segment) {
         if (digit_segment_enabled(digit, segment)) {
-            draw_filled_rect(
-                segment_rects[segment].x,
-                segment_rects[segment].y,
-                segment_rects[segment].width,
-                segment_rects[segment].height,
-                solid,
-                color);
+            draw_filled_rect(segment_rects[segment].x, segment_rects[segment].y, segment_rects[segment].width,
+                             segment_rects[segment].height, solid, color);
         }
     }
 }
 
-float draw_number(int value, float x, float y, float scale, gs_effect_t* solid, Color color)
-{
+float draw_number(int value, float x, float y, float scale, gs_effect_t* solid, Color color) {
     value = std::max(0, value);
     char buffer[16] = {};
     snprintf(buffer, sizeof(buffer), "%d", value);
@@ -136,8 +119,7 @@ float draw_number(int value, float x, float y, float scale, gs_effect_t* solid, 
     return cursor;
 }
 
-float draw_glyph_char(char ch, float x, float y, float scale, gs_effect_t* solid, Color color)
-{
+float draw_glyph_char(char ch, float x, float y, float scale, gs_effect_t* solid, Color color) {
     const char* rows[5] = {"000", "000", "000", "000", "000"};
 
     switch (ch) {
@@ -305,13 +287,8 @@ float draw_glyph_char(char ch, float x, float y, float scale, gs_effect_t* solid
     for (int row = 0; row < 5; ++row) {
         for (int column = 0; column < 3; ++column) {
             if (rows[row][column] == '1') {
-                draw_filled_rect(
-                    x + static_cast<float>(column) * scale,
-                    y + static_cast<float>(row) * scale,
-                    scale,
-                    scale,
-                    solid,
-                    color);
+                draw_filled_rect(x + static_cast<float>(column) * scale, y + static_cast<float>(row) * scale, scale,
+                                 scale, solid, color);
             }
         }
     }
@@ -319,8 +296,7 @@ float draw_glyph_char(char ch, float x, float y, float scale, gs_effect_t* solid
     return x + 4.0f * scale;
 }
 
-float draw_text(const std::string& text, float x, float y, float scale, gs_effect_t* solid, Color color)
-{
+float draw_text(const std::string& text, float x, float y, float scale, gs_effect_t* solid, Color color) {
     float cursor = x;
     for (char ch : text) {
         if (ch == ' ') {
@@ -332,8 +308,7 @@ float draw_text(const std::string& text, float x, float y, float scale, gs_effec
     return cursor;
 }
 
-Color color_for_state(TrackState state)
-{
+Color color_for_state(TrackState state) {
     switch (state) {
     case TrackState::New:
         return {0.15f, 0.72f, 1.0f, 0.95f};
@@ -347,8 +322,7 @@ Color color_for_state(TrackState state)
     }
 }
 
-void draw_track_label(const PersonTrack& track, const Rect& output_box, gs_effect_t* solid)
-{
+void draw_track_label(const PersonTrack& track, const Rect& output_box, gs_effect_t* solid) {
     const float scale = 2.0f;
     const float label_x = std::max(2.0f, output_box.x);
     const float id_y = output_box.y > 46.0f ? output_box.y - 46.0f : output_box.y + 4.0f;
@@ -361,13 +335,14 @@ void draw_track_label(const PersonTrack& track, const Rect& output_box, gs_effec
 
     draw_number(track.id, label_x, id_y, scale, solid, id_color);
     draw_text(track_state_short_name(track.state), label_x, state_y, scale, solid, state_color);
-    draw_number(static_cast<int>(std::round(track.confidence * 100.0f)), label_x, score_y, scale, solid, confidence_color);
+    draw_number(static_cast<int>(std::round(track.confidence * 100.0f)), label_x, score_y, scale, solid,
+                confidence_color);
 }
 
-std::string tracker_summary(const DebugOverlayData& data)
-{
+std::string tracker_summary(const DebugOverlayData& data) {
     const std::string prefix = data.tracking_algorithm == TrackingAlgorithm::SimpleIou ? "IOU" : "BT";
-    std::string summary = prefix + " A" + std::to_string(data.active_track_count) + " L" + std::to_string(data.lost_track_count);
+    std::string summary =
+        prefix + " A" + std::to_string(data.active_track_count) + " L" + std::to_string(data.lost_track_count);
 
     if (data.subject_lock_mode == SubjectLockMode::Off) {
         return summary;
@@ -391,8 +366,7 @@ std::string tracker_summary(const DebugOverlayData& data)
 
 } // namespace
 
-CropRenderer::~CropRenderer()
-{
+CropRenderer::~CropRenderer() {
     if (crop_effect_ != nullptr) {
         obs_enter_graphics();
         gs_effect_destroy(crop_effect_);
@@ -401,8 +375,7 @@ CropRenderer::~CropRenderer()
     }
 }
 
-bool CropRenderer::ensure_effect()
-{
+bool CropRenderer::ensure_effect() {
     if (crop_effect_ != nullptr) {
         return true;
     }
@@ -444,23 +417,15 @@ bool CropRenderer::ensure_effect()
     return true;
 }
 
-bool CropRenderer::initialize()
-{
+bool CropRenderer::initialize() {
     obs_enter_graphics();
     const bool ok = ensure_effect();
     obs_leave_graphics();
     return ok;
 }
 
-void CropRenderer::render(
-    obs_source_t* filter_source,
-    const Rect& crop,
-        uint32_t source_width,
-        uint32_t source_height,
-        bool debug_overlay,
-        const DebugOverlayData& debug_data,
-        gs_effect_t* fallback_effect)
-{
+void CropRenderer::render(obs_source_t* filter_source, const Rect& crop, uint32_t source_width, uint32_t source_height,
+                          bool debug_overlay, const DebugOverlayData& debug_data, gs_effect_t* fallback_effect) {
     if (filter_source == nullptr) {
         return;
     }
@@ -491,10 +456,8 @@ void CropRenderer::render(
         vec2 crop_min;
         vec2 crop_size;
         vec2_set(&crop_min, crop.x / static_cast<float>(source_width), crop.y / static_cast<float>(source_height));
-        vec2_set(
-            &crop_size,
-            crop.width / static_cast<float>(source_width),
-            crop.height / static_cast<float>(source_height));
+        vec2_set(&crop_size, crop.width / static_cast<float>(source_width),
+                 crop.height / static_cast<float>(source_height));
 
         gs_effect_set_vec2(crop_min_param_, &crop_min);
         gs_effect_set_vec2(crop_size_param_, &crop_size);
@@ -507,8 +470,8 @@ void CropRenderer::render(
     }
 }
 
-void CropRenderer::render_debug_overlay(const Rect& crop, uint32_t source_width, uint32_t source_height, const DebugOverlayData& data)
-{
+void CropRenderer::render_debug_overlay(const Rect& crop, uint32_t source_width, uint32_t source_height,
+                                        const DebugOverlayData& data) {
     if (!crop.valid() || source_width == 0 || source_height == 0) {
         return;
     }
@@ -539,7 +502,8 @@ void CropRenderer::render_debug_overlay(const Rect& crop, uint32_t source_width,
     draw_text(tracker_summary(data), 8.0f, 8.0f, 3.0f, solid, summary_color);
 
     for (const Detection& detection : data.detections) {
-        draw_rect_outline(source_to_output_rect(detection.box, crop, source_width, source_height), 2.0f, solid, detection_color);
+        draw_rect_outline(source_to_output_rect(detection.box, crop, source_width, source_height), 2.0f, solid,
+                          detection_color);
     }
 
     for (const PersonTrack& track : data.lost_tracks) {
@@ -554,19 +518,20 @@ void CropRenderer::render_debug_overlay(const Rect& crop, uint32_t source_width,
         draw_track_label(track, output_box, solid);
     }
 
-    draw_rect_outline({0.0f, 0.0f, static_cast<float>(source_width), static_cast<float>(source_height)}, 2.0f, solid, current_crop_color);
+    draw_rect_outline({0.0f, 0.0f, static_cast<float>(source_width), static_cast<float>(source_height)}, 2.0f, solid,
+                      current_crop_color);
 
     if (data.target_crop.valid()) {
-        draw_rect_outline(source_to_output_rect(data.target_crop, crop, source_width, source_height), 2.0f, solid, target_crop_color);
+        draw_rect_outline(source_to_output_rect(data.target_crop, crop, source_width, source_height), 2.0f, solid,
+                          target_crop_color);
     }
 
     if (data.dead_zone > 0.0 && data.current_crop.valid()) {
-        const Rect dead_zone = make_centered_rect(
-            data.current_crop.center_x(),
-            data.current_crop.center_y(),
-            data.current_crop.width * static_cast<float>(data.dead_zone),
-            data.current_crop.height * static_cast<float>(data.dead_zone));
-        draw_rect_outline(source_to_output_rect(dead_zone, crop, source_width, source_height), 1.0f, solid, dead_zone_color);
+        const Rect dead_zone = make_centered_rect(data.current_crop.center_x(), data.current_crop.center_y(),
+                                                  data.current_crop.width * static_cast<float>(data.dead_zone),
+                                                  data.current_crop.height * static_cast<float>(data.dead_zone));
+        draw_rect_outline(source_to_output_rect(dead_zone, crop, source_width, source_height), 1.0f, solid,
+                          dead_zone_color);
     }
 
     gs_matrix_pop();

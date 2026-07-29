@@ -17,7 +17,7 @@ struct OnnxPersonDetectorConfig {
 };
 
 class OnnxPersonDetector final : public PersonDetector {
-public:
+  public:
     explicit OnnxPersonDetector(OnnxPersonDetectorConfig config);
     ~OnnxPersonDetector() override;
 
@@ -28,7 +28,7 @@ public:
     const std::string& error() const;
     std::vector<Detection> detect(const Frame& frame) override;
 
-private:
+  private:
     struct Impl;
     std::unique_ptr<Impl> impl_;
 };

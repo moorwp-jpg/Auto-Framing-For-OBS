@@ -25,19 +25,12 @@ struct YoloXClassFilterResult {
     float combined_score = 0.0f;
 };
 
-YoloXClassFilterResult evaluate_yolox_person_class_scores(
-    const float* row,
-    size_t features,
-    const YoloXPostprocessConfig& config);
+YoloXClassFilterResult evaluate_yolox_person_class_scores(const float* row, size_t features,
+                                                          const YoloXPostprocessConfig& config);
 
-std::vector<Detection> postprocess_yolox_person_detections(
-    const float* output,
-    size_t rows,
-    size_t features,
-    int input_width,
-    int input_height,
-    const LetterboxInfo& letterbox,
-    const Size& source_size,
-    const YoloXPostprocessConfig& config);
+std::vector<Detection> postprocess_yolox_person_detections(const float* output, size_t rows, size_t features,
+                                                           int input_width, int input_height,
+                                                           const LetterboxInfo& letterbox, const Size& source_size,
+                                                           const YoloXPostprocessConfig& config);
 
 } // namespace autoframing

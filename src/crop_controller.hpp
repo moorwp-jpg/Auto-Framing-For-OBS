@@ -9,15 +9,16 @@
 namespace autoframing {
 
 class CropController {
-public:
-    Rect update(const Size& source_size, const std::vector<PersonTrack>& tracks, const AutoFramingSettings& settings, double dt);
+  public:
+    Rect update(const Size& source_size, const std::vector<PersonTrack>& tracks, const AutoFramingSettings& settings,
+                double dt);
 
     Rect current_crop() const { return current_crop_; }
     Rect target_crop() const { return target_crop_; }
     bool has_crop() const { return has_crop_; }
     void reset();
 
-private:
+  private:
     Rect choose_subject(const std::vector<PersonTrack>& tracks, TrackingMode mode) const;
     Rect build_target_crop(const Size& source_size, const Rect& subject, const AutoFramingSettings& settings) const;
     Rect full_frame_crop(const Size& source_size) const;

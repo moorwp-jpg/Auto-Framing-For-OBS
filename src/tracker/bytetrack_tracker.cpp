@@ -64,9 +64,8 @@ bool track_is_explicitly_locked(const PersonTrack& track, const TrackerUpdateOpt
 uint32_t elapsed_milliseconds(uint64_t previous_timestamp_ns, uint64_t current_timestamp_ns) {
     if (previous_timestamp_ns == 0 || current_timestamp_ns <= previous_timestamp_ns)
         return 0;
-    return static_cast<uint32_t>(
-        std::min<uint64_t>((current_timestamp_ns - previous_timestamp_ns) / 1000000ULL,
-                           std::numeric_limits<uint32_t>::max()));
+    return static_cast<uint32_t>(std::min<uint64_t>((current_timestamp_ns - previous_timestamp_ns) / 1000000ULL,
+                                                    std::numeric_limits<uint32_t>::max()));
 }
 
 ByteTrackConfig sanitize_config(ByteTrackConfig config) {
@@ -76,9 +75,8 @@ ByteTrackConfig sanitize_config(ByteTrackConfig config) {
     config.match_thresh = clamp_threshold(config.match_thresh, 0.01f, 0.99f);
     config.track_buffer_frames = std::clamp<uint32_t>(config.track_buffer_frames, 1, 600);
     config.prediction_drift_guard_ms = std::clamp<uint32_t>(config.prediction_drift_guard_ms, 250, 10000);
-    config.prediction_hold_ms =
-        std::clamp<uint32_t>(std::max(config.prediction_hold_ms, config.prediction_drift_guard_ms),
-                             config.prediction_drift_guard_ms, 20000);
+    config.prediction_hold_ms = std::clamp<uint32_t>(
+        std::max(config.prediction_hold_ms, config.prediction_drift_guard_ms), config.prediction_drift_guard_ms, 20000);
     config.occlusion_hold_ms = std::min<uint32_t>(config.occlusion_hold_ms, 5000);
     config.locked_occlusion_hold_ms =
         std::clamp<uint32_t>(config.locked_occlusion_hold_ms, config.occlusion_hold_ms, 10000);
@@ -324,8 +322,7 @@ std::vector<PersonTrack> ByteTrackTracker::update(const std::vector<Detection>& 
     first_track_boxes.reserve(tracks_.size());
 
     for (size_t i = 0; i < tracks_.size(); ++i) {
-        const uint32_t recovery_age_ms =
-            elapsed_milliseconds(tracks_[i].motion.measurement_timestamp_ns, timestamp_ns);
+        const uint32_t recovery_age_ms = elapsed_milliseconds(tracks_[i].motion.measurement_timestamp_ns, timestamp_ns);
         const uint32_t recovery_window_ms = track_is_explicitly_locked(tracks_[i].person, options)
                                                 ? config_.locked_recently_lost_recovery_ms
                                                 : config_.recently_lost_recovery_ms;
@@ -394,8 +391,7 @@ std::vector<PersonTrack> ByteTrackTracker::update(const std::vector<Detection>& 
 
     for (size_t i = 0; i < tracks_.size(); ++i) {
         if (!track_matched[i] && is_active_state(tracks_[i].person.state)) {
-            const uint32_t hold_age_ms =
-                elapsed_milliseconds(tracks_[i].motion.measurement_timestamp_ns, timestamp_ns);
+            const uint32_t hold_age_ms = elapsed_milliseconds(tracks_[i].motion.measurement_timestamp_ns, timestamp_ns);
             const uint32_t hold_ms = track_is_explicitly_locked(tracks_[i].person, options)
                                          ? config_.locked_occlusion_hold_ms
                                          : config_.occlusion_hold_ms;
@@ -477,9 +473,9 @@ std::vector<PersonTrack> ByteTrackTracker::predict(uint64_t timestamp_ns, const 
         }
         if (track.person.missed_frames > 0 || track.person.occlusion_hold) {
             const uint32_t hold_age_ms = elapsed_milliseconds(track.motion.measurement_timestamp_ns, timestamp_ns);
-            const uint32_t hold_ms =
-                track_is_explicitly_locked(track.person, options) ? config_.locked_occlusion_hold_ms
-                                                                  : config_.occlusion_hold_ms;
+            const uint32_t hold_ms = track_is_explicitly_locked(track.person, options)
+                                         ? config_.locked_occlusion_hold_ms
+                                         : config_.occlusion_hold_ms;
             if (hold_ms == 0 || hold_age_ms > hold_ms) {
                 track.person.state = TrackState::Lost;
                 track.person.occlusion_hold = false;

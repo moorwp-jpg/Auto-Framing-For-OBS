@@ -21,8 +21,8 @@ struct Rect {
     float height = 0.0f;
 
     bool valid() const {
-        return std::isfinite(x) && std::isfinite(y) && std::isfinite(width) && std::isfinite(height) &&
-               width > 0.0f && height > 0.0f;
+        return std::isfinite(x) && std::isfinite(y) && std::isfinite(width) && std::isfinite(height) && width > 0.0f &&
+               height > 0.0f;
     }
     float left() const { return x; }
     float top() const { return y; }
@@ -33,13 +33,11 @@ struct Rect {
     float area() const { return valid() ? width * height : 0.0f; }
 };
 
-inline Rect make_centered_rect(float center_x, float center_y, float width, float height)
-{
+inline Rect make_centered_rect(float center_x, float center_y, float width, float height) {
     return {center_x - width * 0.5f, center_y - height * 0.5f, width, height};
 }
 
-inline float intersection_over_union(const Rect& a, const Rect& b)
-{
+inline float intersection_over_union(const Rect& a, const Rect& b) {
     const float left = std::max(a.left(), b.left());
     const float top = std::max(a.top(), b.top());
     const float right = std::min(a.right(), b.right());
@@ -51,8 +49,7 @@ inline float intersection_over_union(const Rect& a, const Rect& b)
     return union_area > 0.0f ? intersection / union_area : 0.0f;
 }
 
-inline Rect union_rects(const std::vector<Rect>& rects)
-{
+inline Rect union_rects(const std::vector<Rect>& rects) {
     if (rects.empty()) {
         return {};
     }
@@ -72,8 +69,7 @@ inline Rect union_rects(const std::vector<Rect>& rects)
     return {left, top, right - left, bottom - top};
 }
 
-inline Rect clamp_rect_to_size(Rect rect, const Size& size)
-{
+inline Rect clamp_rect_to_size(Rect rect, const Size& size) {
     if (!size.valid() || !rect.valid()) {
         return {};
     }
@@ -86,4 +82,3 @@ inline Rect clamp_rect_to_size(Rect rect, const Size& size)
 }
 
 } // namespace autoframing
-

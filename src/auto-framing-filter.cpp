@@ -503,15 +503,14 @@ RuntimeStatusText format_runtime_status_text(const RuntimeInfo& runtime) {
         std::string("Tracker prediction: ") + tracker_runtime_state_display(runtime.tracker_runtime_state);
     text.performance = format_performance_guidance(runtime);
 
-    text.tracks =
-        std::string("Tracks: active=") + std::to_string(runtime.active_track_count) +
-        " lost=" + std::to_string(runtime.lost_track_count) +
-        " low-confidence candidates=" + std::to_string(runtime.tracker_diagnostics.low_confidence_candidates) +
-        " continuations=" + std::to_string(runtime.tracker_diagnostics.low_confidence_matched_updates) +
-        " lost recoveries=" + std::to_string(runtime.tracker_diagnostics.recently_lost_recovery_successes) +
-        (runtime.tracker_diagnostics.occlusion_hold_active
-             ? " occlusion hold=" + std::to_string(runtime.tracker_diagnostics.occlusion_hold_age_ms) + " ms"
-             : "");
+    text.tracks = std::string("Tracks: active=") + std::to_string(runtime.active_track_count) +
+                  " lost=" + std::to_string(runtime.lost_track_count) + " low-confidence candidates=" +
+                  std::to_string(runtime.tracker_diagnostics.low_confidence_candidates) +
+                  " continuations=" + std::to_string(runtime.tracker_diagnostics.low_confidence_matched_updates) +
+                  " lost recoveries=" + std::to_string(runtime.tracker_diagnostics.recently_lost_recovery_successes) +
+                  (runtime.tracker_diagnostics.occlusion_hold_active
+                       ? " occlusion hold=" + std::to_string(runtime.tracker_diagnostics.occlusion_hold_age_ms) + " ms"
+                       : "");
     text.crop = std::string("Current crop: ") + format_rect(runtime.current_crop);
     return text;
 }
@@ -928,8 +927,8 @@ void detection_worker_loop(AutoFramingFilter* filter) {
             filter->pending_generation = 0;
         }
 
-        if (!pipeline_generation_is_current(
-                frame_generation, filter->pipeline_generation.load(std::memory_order_relaxed))) {
+        if (!pipeline_generation_is_current(frame_generation,
+                                            filter->pipeline_generation.load(std::memory_order_relaxed))) {
             continue;
         }
 
@@ -948,8 +947,8 @@ void detection_worker_loop(AutoFramingFilter* filter) {
         const double inference_ms = static_cast<double>(inference_end_ns - inference_start_ns) / 1000000.0;
         const size_t detection_count = detections.size();
 
-        if (!pipeline_generation_is_current(
-                frame_generation, filter->pipeline_generation.load(std::memory_order_relaxed))) {
+        if (!pipeline_generation_is_current(frame_generation,
+                                            filter->pipeline_generation.load(std::memory_order_relaxed))) {
             continue;
         }
 
@@ -1370,8 +1369,7 @@ bool copy_source_frame_to_rgba(const struct obs_source_frame* source_frame, Fram
                 const uint32_t chroma_x = i422_chroma_index(x);
                 const uint8_t y8 = p010_sample_to_u8(read_le16(y_plane + static_cast<size_t>(x) * 2));
                 const uint8_t u8 = p010_sample_to_u8(read_le16(uv_plane + static_cast<size_t>(chroma_x) * 4));
-                const uint8_t v8 =
-                    p010_sample_to_u8(read_le16(uv_plane + static_cast<size_t>(chroma_x) * 4 + 2));
+                const uint8_t v8 = p010_sample_to_u8(read_le16(uv_plane + static_cast<size_t>(chroma_x) * 4 + 2));
                 yuv_to_rgba(y8, u8, v8, dst + x * 4);
             }
             break;
@@ -1528,15 +1526,14 @@ obs_properties_t* auto_framing_properties(void* data) {
     obs_property_t* runtime_performance =
         obs_properties_add_text(props, "runtime_performance", runtime_text.performance.c_str(), OBS_TEXT_INFO);
     obs_property_text_set_info_word_wrap(runtime_performance, true);
-    obs_property_text_set_info_type(runtime_performance,
-                                    runtime_text.performance == "Performance: OK" ? OBS_TEXT_INFO_NORMAL
-                                                                                  : OBS_TEXT_INFO_WARNING);
+    obs_property_text_set_info_type(runtime_performance, runtime_text.performance == "Performance: OK"
+                                                             ? OBS_TEXT_INFO_NORMAL
+                                                             : OBS_TEXT_INFO_WARNING);
     obs_properties_add_text(props, "runtime_tracks", runtime_text.tracks.c_str(), OBS_TEXT_INFO);
     obs_properties_add_text(props, "runtime_crop", runtime_text.crop.c_str(), OBS_TEXT_INFO);
 
-    obs_property_t* user_preset =
-        obs_properties_add_list(props, setting_keys::user_preset, text("UserPreset"), OBS_COMBO_TYPE_LIST,
-                                OBS_COMBO_FORMAT_STRING);
+    obs_property_t* user_preset = obs_properties_add_list(props, setting_keys::user_preset, text("UserPreset"),
+                                                          OBS_COMBO_TYPE_LIST, OBS_COMBO_FORMAT_STRING);
     obs_property_list_add_string(user_preset, text("UserPreset.PresenterSmooth"), "presenter_smooth");
     obs_property_list_add_string(user_preset, text("UserPreset.PresenterFast"), "presenter_fast");
     obs_property_list_add_string(user_preset, text("UserPreset.Group"), "group");
@@ -1590,9 +1587,9 @@ obs_properties_t* auto_framing_properties(void* data) {
     obs_properties_add_path(advanced, setting_keys::model_path, text("ModelPath"), OBS_PATH_FILE, "ONNX Model (*.onnx)",
                             nullptr);
 
-    obs_property_t* algorithm = obs_properties_add_list(advanced, setting_keys::tracking_algorithm,
-                                                        text("TrackingAlgorithm"), OBS_COMBO_TYPE_LIST,
-                                                        OBS_COMBO_FORMAT_STRING);
+    obs_property_t* algorithm =
+        obs_properties_add_list(advanced, setting_keys::tracking_algorithm, text("TrackingAlgorithm"),
+                                OBS_COMBO_TYPE_LIST, OBS_COMBO_FORMAT_STRING);
     obs_property_list_add_string(algorithm, text("TrackingAlgorithm.SimpleIou"), "simple_iou");
     obs_property_list_add_string(algorithm, text("TrackingAlgorithm.ByteTrack"), "bytetrack");
 
@@ -1613,10 +1610,10 @@ obs_properties_t* auto_framing_properties(void* data) {
     obs_properties_add_float_slider(advanced, setting_keys::nms_threshold, text("NmsThreshold"), 0.05, 0.95, 0.01);
     obs_properties_add_float_slider(advanced, setting_keys::bytetrack_track_high_thresh,
                                     text("ByteTrackTrackHighThresh"), 0.0, 0.99, 0.01);
-    obs_properties_add_float_slider(advanced, setting_keys::bytetrack_track_low_thresh,
-                                    text("ByteTrackTrackLowThresh"), 0.0, 0.99, 0.01);
-    obs_properties_add_float_slider(advanced, setting_keys::bytetrack_new_track_thresh,
-                                    text("ByteTrackNewTrackThresh"), 0.0, 0.99, 0.01);
+    obs_properties_add_float_slider(advanced, setting_keys::bytetrack_track_low_thresh, text("ByteTrackTrackLowThresh"),
+                                    0.0, 0.99, 0.01);
+    obs_properties_add_float_slider(advanced, setting_keys::bytetrack_new_track_thresh, text("ByteTrackNewTrackThresh"),
+                                    0.0, 0.99, 0.01);
     obs_properties_add_float_slider(advanced, setting_keys::bytetrack_match_thresh, text("ByteTrackMatchThresh"), 0.0,
                                     0.99, 0.01);
     obs_properties_add_int_slider(advanced, setting_keys::bytetrack_track_buffer_frames,

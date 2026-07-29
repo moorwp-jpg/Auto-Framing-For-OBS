@@ -12,8 +12,7 @@ struct PresetMargins {
     float center_y_offset_boxes;
 };
 
-PresetMargins margins_for_preset(FramingPreset preset)
-{
+PresetMargins margins_for_preset(FramingPreset preset) {
     switch (preset) {
     case FramingPreset::Tight:
         return {1.25f, 1.25f, -0.03f};
@@ -27,8 +26,7 @@ PresetMargins margins_for_preset(FramingPreset preset)
     }
 }
 
-Rect lerp_rect(const Rect& from, const Rect& to, float amount)
-{
+Rect lerp_rect(const Rect& from, const Rect& to, float amount) {
     return {
         from.x + (to.x - from.x) * amount,
         from.y + (to.y - from.y) * amount,
@@ -37,14 +35,12 @@ Rect lerp_rect(const Rect& from, const Rect& to, float amount)
     };
 }
 
-float smoothstep(float amount)
-{
+float smoothstep(float amount) {
     const float t = std::clamp(amount, 0.0f, 1.0f);
     return t * t * (3.0f - 2.0f * t);
 }
 
-float soft_dead_zone_center(float current_center, float target_center, float outer_radius)
-{
+float soft_dead_zone_center(float current_center, float target_center, float outer_radius) {
     if (outer_radius <= 0.0f) {
         return target_center;
     }
@@ -66,34 +62,25 @@ float soft_dead_zone_center(float current_center, float target_center, float out
     return current_center + delta * influence;
 }
 
-Rect focus_region_for_preset(const Rect& subject, FramingPreset preset)
-{
+Rect focus_region_for_preset(const Rect& subject, FramingPreset preset) {
     if (preset != FramingPreset::Tight || !subject.valid()) {
         return subject;
     }
 
-    return make_centered_rect(
-        subject.center_x(),
-        subject.y + subject.height * 0.28f,
-        subject.width * 1.15f,
-        subject.height * 0.50f);
+    return make_centered_rect(subject.center_x(), subject.y + subject.height * 0.28f, subject.width * 1.15f,
+                              subject.height * 0.50f);
 }
 
 } // namespace
 
-void CropController::reset()
-{
+void CropController::reset() {
     current_crop_ = {};
     target_crop_ = {};
     has_crop_ = false;
 }
 
-Rect CropController::update(
-    const Size& source_size,
-    const std::vector<PersonTrack>& tracks,
-    const AutoFramingSettings& raw_settings,
-    double dt)
-{
+Rect CropController::update(const Size& source_size, const std::vector<PersonTrack>& tracks,
+                            const AutoFramingSettings& raw_settings, double dt) {
     if (!source_size.valid()) {
         reset();
         return {};
@@ -119,8 +106,7 @@ Rect CropController::update(
     return current_crop_;
 }
 
-Rect CropController::choose_subject(const std::vector<PersonTrack>& tracks, TrackingMode mode) const
-{
+Rect CropController::choose_subject(const std::vector<PersonTrack>& tracks, TrackingMode mode) const {
     if (tracks.empty()) {
         return {};
     }
@@ -145,30 +131,23 @@ Rect CropController::choose_subject(const std::vector<PersonTrack>& tracks, Trac
     return best->box;
 }
 
-Rect CropController::build_target_crop(
-    const Size& source_size,
-    const Rect& subject,
-    const AutoFramingSettings& settings) const
-{
+Rect CropController::build_target_crop(const Size& source_size, const Rect& subject,
+                                       const AutoFramingSettings& settings) const {
     const PresetMargins margins = margins_for_preset(settings.framing_preset);
     const Rect focus_region = focus_region_for_preset(subject, settings.framing_preset);
     Rect target = make_centered_rect(
-        focus_region.center_x(),
-        focus_region.center_y() + focus_region.height * margins.center_y_offset_boxes,
-        focus_region.width * margins.width_multiplier,
-        focus_region.height * margins.height_multiplier);
+        focus_region.center_x(), focus_region.center_y() + focus_region.height * margins.center_y_offset_boxes,
+        focus_region.width * margins.width_multiplier, focus_region.height * margins.height_multiplier);
 
     target = preserve_aspect(target, source_size.aspect());
     return enforce_zoom_and_bounds(target, source_size, settings.max_zoom);
 }
 
-Rect CropController::full_frame_crop(const Size& source_size) const
-{
+Rect CropController::full_frame_crop(const Size& source_size) const {
     return {0.0f, 0.0f, source_size.width, source_size.height};
 }
 
-Rect CropController::preserve_aspect(Rect rect, float aspect) const
-{
+Rect CropController::preserve_aspect(Rect rect, float aspect) const {
     if (!rect.valid() || aspect <= 0.0f) {
         return rect;
     }
@@ -188,8 +167,7 @@ Rect CropController::preserve_aspect(Rect rect, float aspect) const
     return rect;
 }
 
-Rect CropController::enforce_zoom_and_bounds(Rect rect, const Size& source_size, double max_zoom) const
-{
+Rect CropController::enforce_zoom_and_bounds(Rect rect, const Size& source_size, double max_zoom) const {
     if (!source_size.valid()) {
         return {};
     }
@@ -224,8 +202,7 @@ Rect CropController::enforce_zoom_and_bounds(Rect rect, const Size& source_size,
     return clamp_rect_to_size(rect, source_size);
 }
 
-Rect CropController::apply_dead_zone(Rect target, double dead_zone) const
-{
+Rect CropController::apply_dead_zone(Rect target, double dead_zone) const {
     if (!has_crop_ || dead_zone <= 0.0 || !target.valid()) {
         return target;
     }

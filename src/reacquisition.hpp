@@ -110,8 +110,8 @@ inline void update_reacquisition(ReacquisitionRuntime& runtime, const Reacquisit
         (elapsed_ms(runtime.state_started_ns, input.now_ns) >= config.maximum_burst_ms ||
          runtime.attempts >= config.maximum_attempts)) {
         ++runtime.failures;
-        runtime = {ReacquisitionState::Stable, "reacquisition bounded timeout", 0, 0, 0, runtime.successes,
-                   runtime.failures};
+        runtime = {
+            ReacquisitionState::Stable, "reacquisition bounded timeout", 0, 0, 0, runtime.successes, runtime.failures};
         return;
     }
 
@@ -141,15 +141,13 @@ inline void update_reacquisition(ReacquisitionRuntime& runtime, const Reacquisit
     }
 }
 
-inline uint32_t effective_detection_interval_ms(const ReacquisitionConfig& config,
-                                                const ReacquisitionRuntime& runtime, double smoothed_inference_ms,
-                                                bool* budget_limited = nullptr) {
+inline uint32_t effective_detection_interval_ms(const ReacquisitionConfig& config, const ReacquisitionRuntime& runtime,
+                                                double smoothed_inference_ms, bool* budget_limited = nullptr) {
     const uint32_t requested =
         runtime.state == ReacquisitionState::Stable ? config.normal_interval_ms : config.burst_interval_ms;
     const double finite_inference = std::isfinite(smoothed_inference_ms) ? std::max(0.0, smoothed_inference_ms) : 0.0;
-    const uint32_t budget = static_cast<uint32_t>(
-        std::min<double>(std::numeric_limits<uint32_t>::max(),
-                         std::ceil(finite_inference * config.inference_safety_multiplier)));
+    const uint32_t budget = static_cast<uint32_t>(std::min<double>(
+        std::numeric_limits<uint32_t>::max(), std::ceil(finite_inference * config.inference_safety_multiplier)));
     const uint32_t effective = std::max(requested, budget);
     if (budget_limited)
         *budget_limited = effective > requested;

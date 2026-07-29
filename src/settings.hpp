@@ -99,26 +99,20 @@ struct AutoFramingSettings {
     SubjectLockMode subject_lock_mode = SubjectLockMode::Off;
 };
 
-inline AutoFramingSettings default_settings()
-{
-    return {};
-}
+inline AutoFramingSettings default_settings() { return {}; }
 
-inline TrackingAlgorithm tracking_algorithm_from_string(const char* value)
-{
+inline TrackingAlgorithm tracking_algorithm_from_string(const char* value) {
     if (value != nullptr && std::strcmp(value, "simple_iou") == 0) {
         return TrackingAlgorithm::SimpleIou;
     }
     return TrackingAlgorithm::ByteTrack;
 }
 
-inline const char* tracking_algorithm_to_string(TrackingAlgorithm algorithm)
-{
+inline const char* tracking_algorithm_to_string(TrackingAlgorithm algorithm) {
     return algorithm == TrackingAlgorithm::SimpleIou ? "simple_iou" : "bytetrack";
 }
 
-inline TrackingSensitivity tracking_sensitivity_from_string(const char* value)
-{
+inline TrackingSensitivity tracking_sensitivity_from_string(const char* value) {
     if (value != nullptr && std::strcmp(value, "conservative") == 0) {
         return TrackingSensitivity::Conservative;
     }
@@ -128,8 +122,7 @@ inline TrackingSensitivity tracking_sensitivity_from_string(const char* value)
     return TrackingSensitivity::Balanced;
 }
 
-inline const char* tracking_sensitivity_to_string(TrackingSensitivity sensitivity)
-{
+inline const char* tracking_sensitivity_to_string(TrackingSensitivity sensitivity) {
     switch (sensitivity) {
     case TrackingSensitivity::Conservative:
         return "conservative";
@@ -141,8 +134,7 @@ inline const char* tracking_sensitivity_to_string(TrackingSensitivity sensitivit
     }
 }
 
-inline FramingPreset framing_preset_from_string(const char* value)
-{
+inline FramingPreset framing_preset_from_string(const char* value) {
     if (value == nullptr) {
         return FramingPreset::Balanced;
     }
@@ -158,8 +150,7 @@ inline FramingPreset framing_preset_from_string(const char* value)
     return FramingPreset::Balanced;
 }
 
-inline const char* framing_preset_to_string(FramingPreset preset)
-{
+inline const char* framing_preset_to_string(FramingPreset preset) {
     switch (preset) {
     case FramingPreset::Tight:
         return "tight";
@@ -173,34 +164,29 @@ inline const char* framing_preset_to_string(FramingPreset preset)
     }
 }
 
-inline TrackingMode tracking_mode_from_string(const char* value)
-{
+inline TrackingMode tracking_mode_from_string(const char* value) {
     if (value != nullptr && std::strcmp(value, "group") == 0) {
         return TrackingMode::Group;
     }
     return TrackingMode::Presenter;
 }
 
-inline const char* tracking_mode_to_string(TrackingMode mode)
-{
+inline const char* tracking_mode_to_string(TrackingMode mode) {
     return mode == TrackingMode::Group ? "group" : "presenter";
 }
 
-inline DetectorBackend detector_backend_from_string(const char* value)
-{
+inline DetectorBackend detector_backend_from_string(const char* value) {
     if (value != nullptr && std::strcmp(value, "onnxruntime_cpu") == 0) {
         return DetectorBackend::OnnxRuntimeCpu;
     }
     return DetectorBackend::Mock;
 }
 
-inline const char* detector_backend_to_string(DetectorBackend backend)
-{
+inline const char* detector_backend_to_string(DetectorBackend backend) {
     return backend == DetectorBackend::OnnxRuntimeCpu ? "onnxruntime_cpu" : "mock";
 }
 
-inline DetectorModelQuality detector_model_quality_from_string(const char* value)
-{
+inline DetectorModelQuality detector_model_quality_from_string(const char* value) {
     if (value != nullptr && std::strcmp(value, "fast_nano") == 0) {
         return DetectorModelQuality::FastNano;
     }
@@ -213,8 +199,7 @@ inline DetectorModelQuality detector_model_quality_from_string(const char* value
     return DetectorModelQuality::BalancedTiny;
 }
 
-inline const char* detector_model_quality_to_string(DetectorModelQuality quality)
-{
+inline const char* detector_model_quality_to_string(DetectorModelQuality quality) {
     switch (quality) {
     case DetectorModelQuality::FastNano:
         return "fast_nano";
@@ -228,8 +213,7 @@ inline const char* detector_model_quality_to_string(DetectorModelQuality quality
     }
 }
 
-inline const char* detector_model_filename(DetectorModelQuality quality)
-{
+inline const char* detector_model_filename(DetectorModelQuality quality) {
     switch (quality) {
     case DetectorModelQuality::FastNano:
         return "yolox_nano.onnx";
@@ -242,8 +226,7 @@ inline const char* detector_model_filename(DetectorModelQuality quality)
     }
 }
 
-inline SubjectLockMode subject_lock_mode_from_string(const char* value)
-{
+inline SubjectLockMode subject_lock_mode_from_string(const char* value) {
     if (value != nullptr && std::strcmp(value, "auto_lock_first_subject") == 0) {
         return SubjectLockMode::AutoLockFirstSubject;
     }
@@ -253,8 +236,7 @@ inline SubjectLockMode subject_lock_mode_from_string(const char* value)
     return SubjectLockMode::Off;
 }
 
-inline const char* subject_lock_mode_to_string(SubjectLockMode mode)
-{
+inline const char* subject_lock_mode_to_string(SubjectLockMode mode) {
     switch (mode) {
     case SubjectLockMode::AutoLockFirstSubject:
         return "auto_lock_first_subject";
@@ -266,8 +248,7 @@ inline const char* subject_lock_mode_to_string(SubjectLockMode mode)
     }
 }
 
-inline AutoFramingSettings sanitize_settings(AutoFramingSettings settings)
-{
+inline AutoFramingSettings sanitize_settings(AutoFramingSettings settings) {
     settings.tracking_speed = std::clamp(settings.tracking_speed, 0.01, 1.0);
     settings.max_zoom = std::clamp(settings.max_zoom, 1.0, 8.0);
     settings.detection_interval_ms = std::clamp<uint32_t>(settings.detection_interval_ms, 16, 2000);
