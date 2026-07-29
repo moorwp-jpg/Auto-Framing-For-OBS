@@ -19,7 +19,12 @@ param(
 
     [switch]$IncludeSmall,
 
-    [switch]$NoChecksum
+    [switch]$NoChecksum,
+
+    [ValidateSet("None", "Pt", "NestedZip", "Pdb", "UnexpectedModel", "SourceFile")]
+    [string]$TestBlockedContent = "None",
+
+    [switch]$TestOmitTiny
 )
 
 $ErrorActionPreference = "Stop"
@@ -391,6 +396,24 @@ foreach ($modelName in $modelNames) {
     if ($expectedLayout -notcontains $relativeModelPath) {
         $expectedLayout += $relativeModelPath
     }
+}
+
+if ($TestOmitTiny) {
+    Remove-Item -LiteralPath (Join-Path $StagingRoot "data\obs-plugins\$pluginName\models\yolox_tiny.onnx") -Force
+}
+
+$testInjection = switch ($TestBlockedContent) {
+    "Pt" { "unexpected.pt" }
+    "NestedZip" { "unexpected.zip" }
+    "Pdb" { "unexpected.pdb" }
+    "UnexpectedModel" { "data\obs-plugins\$pluginName\models\unexpected.onnx" }
+    "SourceFile" { "src\unexpected.cpp" }
+    default { $null }
+}
+if ($null -ne $testInjection) {
+    $testInjectionPath = Join-Path $StagingRoot $testInjection
+    New-Item -ItemType Directory -Force -Path (Split-Path -Parent $testInjectionPath) | Out-Null
+    Set-Content -LiteralPath $testInjectionPath -Value "package policy test fixture" -Encoding Ascii
 }
 
 Validate-StagedFiles -Root $StagingRoot -ExpectedRelativePaths $expectedLayout

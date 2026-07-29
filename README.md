@@ -1,6 +1,6 @@
 # Auto Framing For OBS
 
-[![CI](https://github.com/moorwp-jpg/OBS-Auto-Framing/actions/workflows/ci.yml/badge.svg)](https://github.com/moorwp-jpg/OBS-Auto-Framing/actions/workflows/ci.yml)
+[![CI](https://github.com/moorwp-jpg/Auto-Framing-For-OBS/actions/workflows/ci.yml/badge.svg)](https://github.com/moorwp-jpg/Auto-Framing-For-OBS/actions/workflows/ci.yml)
 
 `auto-framing-for-obs` is a native OBS Studio C++ video filter that performs a virtual crop and pan to keep people framed. It registers as an OBS video filter, exposes user settings, drives a smooth crop controller, renders through a crop shader, and can use either a mock target or ONNX Runtime CPU detection with YOLOX-Nano, YOLOX-Tiny, YOLOX-S, or a custom YOLOX-style ONNX model.
 
