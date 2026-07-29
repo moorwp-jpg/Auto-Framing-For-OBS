@@ -10,7 +10,7 @@ struct Size {
     float width = 0.0f;
     float height = 0.0f;
 
-    bool valid() const { return width > 0.0f && height > 0.0f; }
+    bool valid() const { return std::isfinite(width) && std::isfinite(height) && width > 0.0f && height > 0.0f; }
     float aspect() const { return valid() ? width / height : 1.0f; }
 };
 
@@ -20,7 +20,10 @@ struct Rect {
     float width = 0.0f;
     float height = 0.0f;
 
-    bool valid() const { return width > 0.0f && height > 0.0f; }
+    bool valid() const {
+        return std::isfinite(x) && std::isfinite(y) && std::isfinite(width) && std::isfinite(height) &&
+               width > 0.0f && height > 0.0f;
+    }
     float left() const { return x; }
     float top() const { return y; }
     float right() const { return x + width; }

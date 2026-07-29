@@ -17,6 +17,10 @@ struct ByteTrackConfig {
     uint32_t track_buffer_frames = 30;
     uint32_t prediction_drift_guard_ms = 750;
     uint32_t prediction_hold_ms = 1500;
+    uint32_t occlusion_hold_ms = 800;
+    uint32_t locked_occlusion_hold_ms = 1400;
+    uint32_t recently_lost_recovery_ms = 1400;
+    uint32_t locked_recently_lost_recovery_ms = 2200;
 };
 
 ByteTrackConfig bytetrack_config_for_sensitivity(TrackingSensitivity sensitivity);
@@ -28,6 +32,7 @@ class ByteTrackTracker final : public Tracker {
 
     void set_config(ByteTrackConfig config);
     const ByteTrackConfig& config() const { return config_; }
+    const TrackerDiagnostics& diagnostics() const { return diagnostics_; }
 
     std::vector<PersonTrack> update(const std::vector<Detection>& detections, uint64_t timestamp_ns,
                                     const TrackerUpdateOptions& options = {}) override;
@@ -70,6 +75,7 @@ class ByteTrackTracker final : public Tracker {
 
     std::vector<InternalTrack> tracks_;
     ByteTrackConfig config_;
+    TrackerDiagnostics diagnostics_;
     int next_id_ = 1;
 };
 

@@ -38,8 +38,10 @@ target_sources(
         FILES
             src/crop_controller.hpp
             src/detector.hpp
+            src/frame_pipeline.hpp
             src/geometry.hpp
             src/letterbox.hpp
+            src/reacquisition.hpp
             src/settings.hpp
             src/tracker/assignment.hpp
             src/tracker/bytetrack_tracker.hpp
@@ -172,4 +174,8 @@ if(ENABLE_TESTS)
     add_executable(yuv_tests tests/yuv_tests.cpp)
     target_link_libraries(yuv_tests PRIVATE obs-auto-framing-core)
     add_test(NAME yuv_tests COMMAND yuv_tests)
+
+    add_executable(frame_pipeline_tests tests/frame_pipeline_tests.cpp)
+    target_link_libraries(frame_pipeline_tests PRIVATE obs-auto-framing-core)
+    add_test(NAME frame_pipeline_tests COMMAND frame_pipeline_tests)
 endif()

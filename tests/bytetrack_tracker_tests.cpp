@@ -3,6 +3,7 @@
 #include <algorithm>
 #include <cmath>
 #include <iostream>
+#include <limits>
 #include <stdexcept>
 #include <string>
 #include <vector>
@@ -32,6 +33,8 @@ ByteTrackConfig test_config() {
     config.new_track_thresh = 0.60f;
     config.match_thresh = 0.20f;
     config.track_buffer_frames = 2;
+    config.occlusion_hold_ms = 0;
+    config.locked_occlusion_hold_ms = 0;
     return config;
 }
 
@@ -305,6 +308,47 @@ void iou_predict_returns_active_tracks_and_respects_lock_options() {
     require(tracker.lost_track_count() == 2, "IoU empty update still marks tracks lost");
 }
 
+void bounded_occlusion_hold_expires() {
+    ByteTrackConfig config = test_config();
+    config.occlusion_hold_ms = 100;
+    config.locked_occlusion_hold_ms = 200;
+    ByteTrackTracker tracker(config);
+    constexpr uint64_t start_ns = 1000000000ULL;
+
+    std::vector<PersonTrack> tracks =
+        tracker.update({detection({100.0f, 80.0f, 60.0f, 160.0f}, 0.90f)}, start_ns);
+    require(tracks.size() == 1, "occlusion test creates a track");
+    tracks = tracker.update({}, start_ns + 50000000ULL);
+    require(tracks.size() == 1 && tracks.front().occlusion_hold, "brief occlusion keeps the predicted track");
+    require(tracker.diagnostics().occlusion_hold_active, "occlusion diagnostics become active");
+    tracks = tracker.predict(start_ns + 150000000ULL);
+    require(tracks.empty(), "occlusion hold expires after its bounded duration");
+}
+
+void recently_lost_recovery_is_identity_safe() {
+    ByteTrackTracker tracker(test_config());
+    constexpr uint64_t start_ns = 1000000000ULL;
+    std::vector<PersonTrack> tracks =
+        tracker.update({detection({100.0f, 80.0f, 60.0f, 160.0f}, 0.90f)}, start_ns);
+    const int id = tracks.front().id;
+    tracker.update({}, start_ns + 10000000ULL);
+
+    tracks = tracker.update({detection({104.0f, 82.0f, 60.0f, 160.0f}, 0.91f)}, start_ns + 20000000ULL);
+    require(tracks.size() == 1 && tracks.front().id == id, "nearby recently lost track keeps its identity");
+    require(tracker.diagnostics().recently_lost_recovery_successes == 1, "recovery success is counted");
+
+    tracker.update({}, start_ns + 30000000ULL);
+    tracks = tracker.update({detection({700.0f, 500.0f, 60.0f, 160.0f}, 0.99f)}, start_ns + 40000000ULL);
+    require(tracks.size() == 1 && tracks.front().id != id, "distant detection cannot steal a lost identity");
+}
+
+void invalid_detections_are_rejected() {
+    ByteTrackTracker tracker(test_config());
+    const float invalid = std::numeric_limits<float>::quiet_NaN();
+    const std::vector<PersonTrack> tracks = tracker.update({detection({invalid, 1.0f, 20.0f, 20.0f}, 0.99f)}, 1);
+    require(tracks.empty(), "non-finite detection geometry is rejected");
+}
+
 } // namespace
 
 int main() {
@@ -320,6 +364,9 @@ int main() {
         update_with_no_detections_still_marks_track_lost_after_prediction();
         subject_lock_filters_predicted_tracks();
         iou_predict_returns_active_tracks_and_respects_lock_options();
+        bounded_occlusion_hold_expires();
+        recently_lost_recovery_is_identity_safe();
+        invalid_detections_are_rejected();
     } catch (const std::exception& error) {
         std::cerr << "bytetrack_tracker_tests failed: " << error.what() << '\n';
         return 1;

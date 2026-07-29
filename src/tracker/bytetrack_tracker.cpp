@@ -45,16 +45,28 @@ BoxMeasurement measurement_from_rect(const Rect& box) {
 
 bool is_active_state(TrackState state) { return state == TrackState::New || state == TrackState::Tracked; }
 
-bool is_matchable_state(TrackState state) {
-    return state == TrackState::New || state == TrackState::Tracked || state == TrackState::Lost;
+bool is_active_track(const PersonTrack& track) {
+    return is_active_state(track.state) && (track.missed_frames == 0 || track.occlusion_hold);
 }
-
-bool is_active_track(const PersonTrack& track) { return is_active_state(track.state) && track.missed_frames == 0; }
 
 bool track_is_locked_or_unlocked(const PersonTrack& track, const TrackerUpdateOptions& options) {
     return options.locked_track_ids.empty() ||
            std::find(options.locked_track_ids.begin(), options.locked_track_ids.end(), track.id) !=
                options.locked_track_ids.end();
+}
+
+bool track_is_explicitly_locked(const PersonTrack& track, const TrackerUpdateOptions& options) {
+    return !options.locked_track_ids.empty() &&
+           std::find(options.locked_track_ids.begin(), options.locked_track_ids.end(), track.id) !=
+               options.locked_track_ids.end();
+}
+
+uint32_t elapsed_milliseconds(uint64_t previous_timestamp_ns, uint64_t current_timestamp_ns) {
+    if (previous_timestamp_ns == 0 || current_timestamp_ns <= previous_timestamp_ns)
+        return 0;
+    return static_cast<uint32_t>(
+        std::min<uint64_t>((current_timestamp_ns - previous_timestamp_ns) / 1000000ULL,
+                           std::numeric_limits<uint32_t>::max()));
 }
 
 ByteTrackConfig sanitize_config(ByteTrackConfig config) {
@@ -67,6 +79,12 @@ ByteTrackConfig sanitize_config(ByteTrackConfig config) {
     config.prediction_hold_ms =
         std::clamp<uint32_t>(std::max(config.prediction_hold_ms, config.prediction_drift_guard_ms),
                              config.prediction_drift_guard_ms, 20000);
+    config.occlusion_hold_ms = std::min<uint32_t>(config.occlusion_hold_ms, 5000);
+    config.locked_occlusion_hold_ms =
+        std::clamp<uint32_t>(config.locked_occlusion_hold_ms, config.occlusion_hold_ms, 10000);
+    config.recently_lost_recovery_ms = std::clamp<uint32_t>(config.recently_lost_recovery_ms, 100, 5000);
+    config.locked_recently_lost_recovery_ms =
+        std::clamp<uint32_t>(config.locked_recently_lost_recovery_ms, config.recently_lost_recovery_ms, 10000);
     return config;
 }
 
@@ -123,6 +141,7 @@ void ByteTrackTracker::set_config(ByteTrackConfig config) { config_ = sanitize_c
 
 void ByteTrackTracker::reset() {
     tracks_.clear();
+    diagnostics_ = {};
     next_id_ = 1;
 }
 
@@ -253,11 +272,20 @@ void ByteTrackTracker::update_track_from_detection(InternalTrack& track, const D
     track.person.confidence = detection.confidence;
     track.person.last_seen_ns = timestamp_ns;
     track.person.missed_frames = 0;
+    track.person.low_confidence_update = false;
+    track.person.occlusion_hold = false;
+    track.person.occlusion_hold_age_ms = 0;
     track.person.state = state;
 }
 
 std::vector<PersonTrack> ByteTrackTracker::update(const std::vector<Detection>& detections, uint64_t timestamp_ns,
                                                   const TrackerUpdateOptions& options) {
+    diagnostics_.low_confidence_candidates = 0;
+    diagnostics_.low_confidence_matched_updates = 0;
+    diagnostics_.occlusion_hold_active = false;
+    diagnostics_.occlusion_hold_age_ms = 0;
+    diagnostics_.recently_lost_recovery_attempts = 0;
+    diagnostics_.recently_lost_recovery_successes = 0;
     for (InternalTrack& track : tracks_) {
         if (track.person.state == TrackState::Removed) {
             continue;
@@ -285,6 +313,7 @@ std::vector<PersonTrack> ByteTrackTracker::update(const std::vector<Detection>& 
         if (detections[i].confidence >= config_.track_high_thresh) {
             high_detection_indices.push_back(i);
         } else {
+            ++diagnostics_.low_confidence_candidates;
             low_detection_indices.push_back(i);
         }
     }
@@ -295,7 +324,17 @@ std::vector<PersonTrack> ByteTrackTracker::update(const std::vector<Detection>& 
     first_track_boxes.reserve(tracks_.size());
 
     for (size_t i = 0; i < tracks_.size(); ++i) {
-        if (track_is_locked_or_unlocked(tracks_[i].person, options) && is_matchable_state(tracks_[i].person.state)) {
+        const uint32_t recovery_age_ms =
+            elapsed_milliseconds(tracks_[i].motion.measurement_timestamp_ns, timestamp_ns);
+        const uint32_t recovery_window_ms = track_is_explicitly_locked(tracks_[i].person, options)
+                                                ? config_.locked_recently_lost_recovery_ms
+                                                : config_.recently_lost_recovery_ms;
+        const bool recoverable_lost =
+            tracks_[i].person.state == TrackState::Lost && recovery_age_ms <= recovery_window_ms;
+        if (recoverable_lost)
+            ++diagnostics_.recently_lost_recovery_attempts;
+        if (track_is_locked_or_unlocked(tracks_[i].person, options) &&
+            (is_active_state(tracks_[i].person.state) || recoverable_lost)) {
             first_track_indices.push_back(i);
             first_track_boxes.push_back(tracks_[i].person.box);
         }
@@ -315,6 +354,8 @@ std::vector<PersonTrack> ByteTrackTracker::update(const std::vector<Detection>& 
         const size_t track_index = first_track_indices[match.track_index];
         const size_t high_index = match.detection_index;
         const size_t detection_index = high_detection_indices[high_index];
+        if (tracks_[track_index].person.state == TrackState::Lost)
+            ++diagnostics_.recently_lost_recovery_successes;
         update_track_from_detection(tracks_[track_index], detections[detection_index], timestamp_ns,
                                     TrackState::Tracked);
         track_matched[track_index] = true;
@@ -346,12 +387,27 @@ std::vector<PersonTrack> ByteTrackTracker::update(const std::vector<Detection>& 
         const size_t detection_index = low_detection_indices[match.detection_index];
         update_track_from_detection(tracks_[track_index], detections[detection_index], timestamp_ns,
                                     TrackState::Tracked);
+        tracks_[track_index].person.low_confidence_update = true;
         track_matched[track_index] = true;
+        ++diagnostics_.low_confidence_matched_updates;
     }
 
     for (size_t i = 0; i < tracks_.size(); ++i) {
         if (!track_matched[i] && is_active_state(tracks_[i].person.state)) {
-            tracks_[i].person.state = TrackState::Lost;
+            const uint32_t hold_age_ms =
+                elapsed_milliseconds(tracks_[i].motion.measurement_timestamp_ns, timestamp_ns);
+            const uint32_t hold_ms = track_is_explicitly_locked(tracks_[i].person, options)
+                                         ? config_.locked_occlusion_hold_ms
+                                         : config_.occlusion_hold_ms;
+            if (hold_ms > 0 && hold_age_ms <= hold_ms) {
+                tracks_[i].person.state = TrackState::Tracked;
+                tracks_[i].person.occlusion_hold = true;
+                tracks_[i].person.occlusion_hold_age_ms = hold_age_ms;
+            } else {
+                tracks_[i].person.state = TrackState::Lost;
+                tracks_[i].person.occlusion_hold = false;
+                tracks_[i].person.occlusion_hold_age_ms = 0;
+            }
         }
     }
 
@@ -372,6 +428,8 @@ std::vector<PersonTrack> ByteTrackTracker::update(const std::vector<Detection>& 
             track.person.confidence = detection.confidence;
             track.person.last_seen_ns = timestamp_ns;
             track.person.missed_frames = 0;
+            track.person.low_confidence_update = false;
+            track.person.occlusion_hold = false;
             track.person.state = TrackState::New;
             initiate_motion(track.motion, detection.box, timestamp_ns);
             tracks_.push_back(track);
@@ -392,23 +450,50 @@ std::vector<PersonTrack> ByteTrackTracker::update(const std::vector<Detection>& 
     for (const InternalTrack& track : tracks_) {
         if (track_is_locked_or_unlocked(track.person, options) && is_active_track(track.person)) {
             active_tracks.push_back(track.person);
+            if (track.person.occlusion_hold) {
+                diagnostics_.occlusion_hold_active = true;
+                diagnostics_.occlusion_hold_age_ms =
+                    std::max(diagnostics_.occlusion_hold_age_ms, track.person.occlusion_hold_age_ms);
+            }
         }
     }
     return active_tracks;
 }
 
 std::vector<PersonTrack> ByteTrackTracker::predict(uint64_t timestamp_ns, const TrackerUpdateOptions& options) {
+    diagnostics_.occlusion_hold_active = false;
+    diagnostics_.occlusion_hold_age_ms = 0;
     std::vector<PersonTrack> active_tracks;
     active_tracks.reserve(tracks_.size());
 
     for (InternalTrack& track : tracks_) {
-        if (!track_is_locked_or_unlocked(track.person, options) || !is_active_track(track.person)) {
+        if (!track_is_locked_or_unlocked(track.person, options) || !is_active_state(track.person.state)) {
             continue;
         }
 
         const Rect predicted = predict_motion(track.motion, timestamp_ns, config_);
         if (predicted.valid()) {
             track.person.box = predicted;
+        }
+        if (track.person.missed_frames > 0 || track.person.occlusion_hold) {
+            const uint32_t hold_age_ms = elapsed_milliseconds(track.motion.measurement_timestamp_ns, timestamp_ns);
+            const uint32_t hold_ms =
+                track_is_explicitly_locked(track.person, options) ? config_.locked_occlusion_hold_ms
+                                                                  : config_.occlusion_hold_ms;
+            if (hold_ms == 0 || hold_age_ms > hold_ms) {
+                track.person.state = TrackState::Lost;
+                track.person.occlusion_hold = false;
+                continue;
+            }
+            track.person.occlusion_hold = true;
+            track.person.occlusion_hold_age_ms = hold_age_ms;
+        }
+        if (!is_active_track(track.person))
+            continue;
+        if (track.person.occlusion_hold) {
+            diagnostics_.occlusion_hold_active = true;
+            diagnostics_.occlusion_hold_age_ms =
+                std::max(diagnostics_.occlusion_hold_age_ms, track.person.occlusion_hold_age_ms);
         }
         active_tracks.push_back(track.person);
     }

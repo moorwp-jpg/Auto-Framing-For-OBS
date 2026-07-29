@@ -1,6 +1,7 @@
 #include "crop_controller.hpp"
 #include "crop_renderer.hpp"
 #include "detector.hpp"
+#include "frame_pipeline.hpp"
 #include "onnx_person_detector.hpp"
 #include "settings.hpp"
 #include "tracker.hpp"
@@ -64,6 +65,7 @@ struct RuntimeInfo {
     TrackerRuntimeState tracker_runtime_state = TrackerRuntimeState::Predicting;
     size_t active_track_count = 0;
     size_t lost_track_count = 0;
+    TrackerDiagnostics tracker_diagnostics;
     Rect current_crop;
 };
 
@@ -107,10 +109,12 @@ struct AutoFramingFilter {
     std::condition_variable worker_cv;
     bool stop_worker = false;
     bool pending_frame_available = false;
+    uint64_t pending_generation = 0;
     bool worker_enabled = true;
     bool render_enabled = true;
     Frame pending_frame;
     AutoFramingSettings pending_settings;
+    std::atomic<uint64_t> pipeline_generation{1};
 
     std::mutex detection_result_mutex;
     std::vector<Detection> latest_detections;
@@ -197,7 +201,8 @@ void set_runtime_detection_age(AutoFramingFilter* filter, uint64_t last_detectio
 }
 
 void set_runtime_tracking_stats(AutoFramingFilter* filter, TrackingAlgorithm algorithm, size_t active_track_count,
-                                size_t lost_track_count, const Rect& current_crop) {
+                                size_t lost_track_count, const TrackerDiagnostics& diagnostics,
+                                const Rect& current_crop) {
     if (filter == nullptr) {
         return;
     }
@@ -206,6 +211,7 @@ void set_runtime_tracking_stats(AutoFramingFilter* filter, TrackingAlgorithm alg
     filter->runtime.tracking_algorithm = algorithm;
     filter->runtime.active_track_count = active_track_count;
     filter->runtime.lost_track_count = lost_track_count;
+    filter->runtime.tracker_diagnostics = diagnostics;
     filter->runtime.current_crop = current_crop;
 }
 
@@ -497,8 +503,15 @@ RuntimeStatusText format_runtime_status_text(const RuntimeInfo& runtime) {
         std::string("Tracker prediction: ") + tracker_runtime_state_display(runtime.tracker_runtime_state);
     text.performance = format_performance_guidance(runtime);
 
-    text.tracks = std::string("Tracks: active=") + std::to_string(runtime.active_track_count) +
-                  " lost=" + std::to_string(runtime.lost_track_count);
+    text.tracks =
+        std::string("Tracks: active=") + std::to_string(runtime.active_track_count) +
+        " lost=" + std::to_string(runtime.lost_track_count) +
+        " low-confidence candidates=" + std::to_string(runtime.tracker_diagnostics.low_confidence_candidates) +
+        " continuations=" + std::to_string(runtime.tracker_diagnostics.low_confidence_matched_updates) +
+        " lost recoveries=" + std::to_string(runtime.tracker_diagnostics.recently_lost_recovery_successes) +
+        (runtime.tracker_diagnostics.occlusion_hold_active
+             ? " occlusion hold=" + std::to_string(runtime.tracker_diagnostics.occlusion_hold_age_ms) + " ms"
+             : "");
     text.crop = std::string("Current crop: ") + format_rect(runtime.current_crop);
     return text;
 }
@@ -750,6 +763,8 @@ void reset_tracking_state(AutoFramingFilter* filter, bool reset_detector) {
         return;
     }
 
+    filter->pipeline_generation.fetch_add(1, std::memory_order_relaxed);
+
     if (reset_detector) {
         std::lock_guard<std::mutex> detector_lock(filter->detector_mutex);
         filter->detector.reset();
@@ -764,6 +779,7 @@ void reset_tracking_state(AutoFramingFilter* filter, bool reset_detector) {
         filter->pending_frame = {};
         filter->pending_settings = {};
         filter->pending_frame_available = false;
+        filter->pending_generation = 0;
         filter->last_submit_ns = 0;
         filter->last_detection_age_log_ns = 0;
         filter->last_processed_detection_timestamp_ns = 0;
@@ -893,6 +909,7 @@ void detection_worker_loop(AutoFramingFilter* filter) {
     for (;;) {
         Frame frame;
         AutoFramingSettings settings;
+        uint64_t frame_generation = 0;
 
         {
             std::unique_lock<std::mutex> lock(filter->worker_mutex);
@@ -904,8 +921,16 @@ void detection_worker_loop(AutoFramingFilter* filter) {
 
             frame = std::move(filter->pending_frame);
             settings = filter->pending_settings;
+            frame_generation = filter->pending_generation;
             filter->pending_frame = {};
+            filter->pending_settings = {};
             filter->pending_frame_available = false;
+            filter->pending_generation = 0;
+        }
+
+        if (!pipeline_generation_is_current(
+                frame_generation, filter->pipeline_generation.load(std::memory_order_relaxed))) {
+            continue;
         }
 
         const uint64_t inference_start_ns = os_gettime_ns();
@@ -922,6 +947,12 @@ void detection_worker_loop(AutoFramingFilter* filter) {
         const uint64_t inference_end_ns = os_gettime_ns();
         const double inference_ms = static_cast<double>(inference_end_ns - inference_start_ns) / 1000000.0;
         const size_t detection_count = detections.size();
+
+        if (!pipeline_generation_is_current(
+                frame_generation, filter->pipeline_generation.load(std::memory_order_relaxed))) {
+            continue;
+        }
+
         set_runtime_inference_stats(filter, inference_ms, detection_count);
 
         {
@@ -1641,6 +1672,7 @@ void auto_framing_destroy(void* data) {
         std::lock_guard<std::mutex> lock(filter->worker_mutex);
         filter->stop_worker = true;
         filter->pending_frame_available = false;
+        filter->pending_generation = 0;
     }
     filter->worker_cv.notify_one();
 
@@ -1751,9 +1783,13 @@ void auto_framing_video_tick(void* data, float seconds) {
 
         if (settings.detector_backend == DetectorBackend::Mock || frame.has_rgba()) {
             std::lock_guard<std::mutex> lock(filter->worker_mutex);
-            if (!filter->pending_frame_available) {
+            const uint64_t generation = filter->pipeline_generation.load(std::memory_order_relaxed);
+            const bool replace_pending =
+                !filter->pending_frame_available || frame.timestamp_ns >= filter->pending_frame.timestamp_ns;
+            if (!filter->stop_worker && replace_pending) {
                 filter->pending_frame = std::move(frame);
                 filter->pending_settings = settings;
+                filter->pending_generation = generation;
                 filter->pending_frame_available = true;
                 filter->last_submit_ns = now;
                 filter->worker_cv.notify_one();
@@ -1783,6 +1819,7 @@ void auto_framing_video_tick(void* data, float seconds) {
     std::vector<PersonTrack> active_tracks;
     std::vector<PersonTrack> debug_tracks;
     size_t lost_track_count = 0;
+    TrackerDiagnostics tracker_diagnostics;
 
     {
         std::lock_guard<std::mutex> tracking_lock(filter->tracking_mutex);
@@ -1804,6 +1841,8 @@ void auto_framing_video_tick(void* data, float seconds) {
         active_tracks = filter->tracks;
         debug_tracks = filter->debug_tracks;
         lost_track_count = selected_tracker_lost_count(filter, settings.tracking_algorithm);
+        if (settings.tracking_algorithm == TrackingAlgorithm::ByteTrack)
+            tracker_diagnostics = filter->bytetrack_tracker.diagnostics();
         set_runtime_subject_lock_state(filter, settings.subject_lock_mode, filter->subject_lock.locked_track_ids,
                                        filter->subject_lock.locked_subject_lost,
                                        filter->subject_lock.ignored_detection_count);
@@ -1816,7 +1855,8 @@ void auto_framing_video_tick(void* data, float seconds) {
 
     set_runtime_detection_age(filter, last_detection_timestamp_ns, detection_age_ms, settings.detection_interval_ms,
                               tracker_runtime_state);
-    set_runtime_tracking_stats(filter, settings.tracking_algorithm, active_tracks.size(), lost_track_count, crop);
+    set_runtime_tracking_stats(filter, settings.tracking_algorithm, active_tracks.size(), lost_track_count,
+                               tracker_diagnostics, crop);
 
     if (tracker_runtime_state != TrackerRuntimeState::Detecting && last_detection_timestamp_ns != 0 &&
         detection_age_ms > stale_detection_age_threshold_ms(settings.detection_interval_ms) &&
