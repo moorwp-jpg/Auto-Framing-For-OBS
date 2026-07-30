@@ -92,3 +92,12 @@ If the filter appears but detection does not run:
 - Confirm `data\obs-plugins\obs-auto-framing\models\yolox_tiny.onnx` exists.
 - In the filter properties, click Refresh Runtime Status and check the model path/status lines.
 - Use `Balanced - YOLOX-Tiny` first. If `YOLOX-S` is selected and inference is slow, switch back to Tiny or increase Detection Interval.
+# Public package boundary
+
+The normal Windows package contains the plugin DLL, ONNX Runtime DLL, crop effect, locale, public notices, and the
+YOLOX-Tiny model. Nano or S models appear only when explicitly requested during packaging. Package validation compares
+both staging and archive contents with an explicit allowlist and rejects build output, source payloads, model-training
+files, nested archives, and checksums.
+
+YOLOX-Tiny with ONNX Runtime CPU is the conservative default. If the model cannot be loaded, detection fails safely
+and framing returns toward the full source rather than blocking rendering.

@@ -15,9 +15,9 @@ struct Frame {
     uint32_t rgba_stride = 0;
     std::vector<uint8_t> rgba;
 
-    bool has_rgba() const
-    {
-        return width > 0 && height > 0 && rgba_stride >= width * 4 && rgba.size() >= static_cast<size_t>(rgba_stride) * height;
+    bool has_rgba() const {
+        return width > 0 && height > 0 && rgba_stride >= width * 4 &&
+               rgba.size() >= static_cast<size_t>(rgba_stride) * height;
     }
 };
 
@@ -28,22 +28,22 @@ struct Detection {
 };
 
 class PersonDetector {
-public:
+  public:
     virtual ~PersonDetector() = default;
     virtual std::vector<Detection> detect(const Frame& frame) = 0;
 };
 
 class NullPersonDetector final : public PersonDetector {
-public:
+  public:
     std::vector<Detection> detect(const Frame&) override { return {}; }
 };
 
 class MockPersonDetector final : public PersonDetector {
-public:
+  public:
     void set_enabled(bool enabled) { enabled_ = enabled; }
     std::vector<Detection> detect(const Frame& frame) override;
 
-private:
+  private:
     bool enabled_ = true;
 };
 

@@ -1,5 +1,7 @@
 # Auto Framing For OBS
 
+[![CI](https://github.com/moorwp-jpg/Auto-Framing-For-OBS/actions/workflows/ci.yml/badge.svg)](https://github.com/moorwp-jpg/Auto-Framing-For-OBS/actions/workflows/ci.yml)
+
 `auto-framing-for-obs` is a native OBS Studio C++ video filter that performs a virtual crop and pan to keep people framed. It registers as an OBS video filter, exposes user settings, drives a smooth crop controller, renders through a crop shader, and can use either a mock target or ONNX Runtime CPU detection with YOLOX-Nano, YOLOX-Tiny, YOLOX-S, or a custom YOLOX-style ONNX model.
 
 ## Status
@@ -11,7 +13,9 @@ This is a preview release. When filing bugs, please include OBS version, Windows
 - Detector: `PersonDetector` interface with `MockPersonDetector`, `NullPersonDetector`, and `OnnxPersonDetector`.
 - ONNX Runtime CPU: YOLOX preprocessing, inference, person-best-class filtering, and single-class person NMS. YOLOX-Tiny is the recommended/default bundled model.
 - Frame capture: async source frames are copied to RGBA through `filter_video`; inference runs on a worker thread and never inside `video_render`.
+- Scheduling: one replaceable pending frame bounds worker latency, and pipeline generations reject results invalidated by settings resets.
 - Tracker: selectable ByteTrack-style tracker with low-confidence detection recovery and prediction between detector results, plus the original simple IoU tracker as a fallback.
+- Recovery: bounded occlusion hold and recently lost-track matching preserve identity without allowing distant detections to steal a track.
 - Crop controller: subject selection, group union, margins, aspect preservation, max zoom enforcement, source bounds clamping, dead zone, exponential smoothing, no-target return-to-full-frame.
 - Renderer: OBS filter processing path using `data/effects/crop.effect`.
 
@@ -144,6 +148,16 @@ cmake --preset windows-core-tests
 cmake --build --preset windows-core-tests
 ctest --test-dir build_tests -C RelWithDebInfo
 ```
+
+The canonical contributor check configures and builds only portable core code, runs CTest, checks formatting, and
+parses PowerShell without requiring OBS, ONNX Runtime, or model files:
+
+```powershell
+pwsh -NoProfile -File scripts/verify_repo.ps1 -Clean
+```
+
+See [CONTRIBUTING.md](CONTRIBUTING.md), [SUPPORT.md](SUPPORT.md), [architecture](docs/architecture.md),
+[installation](docs/install.md), and [troubleshooting](docs/troubleshooting.md).
 
 ## Notes
 

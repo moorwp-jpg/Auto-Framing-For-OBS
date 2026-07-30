@@ -49,7 +49,19 @@ struct PersonTrack {
     float confidence = 0.0f;
     uint64_t last_seen_ns = 0;
     uint32_t missed_frames = 0;
+    bool low_confidence_update = false;
+    bool occlusion_hold = false;
+    uint32_t occlusion_hold_age_ms = 0;
     TrackState state = TrackState::Tracked;
+};
+
+struct TrackerDiagnostics {
+    size_t low_confidence_candidates = 0;
+    size_t low_confidence_matched_updates = 0;
+    bool occlusion_hold_active = false;
+    uint32_t occlusion_hold_age_ms = 0;
+    size_t recently_lost_recovery_attempts = 0;
+    size_t recently_lost_recovery_successes = 0;
 };
 
 struct TrackerUpdateOptions {

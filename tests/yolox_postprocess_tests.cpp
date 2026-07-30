@@ -10,22 +10,20 @@ using namespace autoframing;
 
 namespace {
 
-void require(bool condition, const std::string& message)
-{
+void require(bool condition, const std::string& message) {
     if (!condition) {
         throw std::runtime_error(message);
     }
 }
 
-void require_near(float actual, float expected, float tolerance, const std::string& message)
-{
+void require_near(float actual, float expected, float tolerance, const std::string& message) {
     if (std::fabs(actual - expected) > tolerance) {
-        throw std::runtime_error(message + " actual=" + std::to_string(actual) + " expected=" + std::to_string(expected));
+        throw std::runtime_error(message + " actual=" + std::to_string(actual) +
+                                 " expected=" + std::to_string(expected));
     }
 }
 
-YoloXPostprocessConfig test_config()
-{
+YoloXPostprocessConfig test_config() {
     YoloXPostprocessConfig config;
     config.score_floor = 0.05f;
     config.nms_threshold = 0.45f;
@@ -35,8 +33,7 @@ YoloXPostprocessConfig test_config()
     return config;
 }
 
-LetterboxInfo identity_letterbox()
-{
+LetterboxInfo identity_letterbox() {
     LetterboxInfo letterbox;
     letterbox.input_width = 416;
     letterbox.input_height = 416;
@@ -48,35 +45,18 @@ LetterboxInfo identity_letterbox()
     return letterbox;
 }
 
-std::vector<float> row(float objectness, float person, float chair, float bottle)
-{
+std::vector<float> row(float objectness, float person, float chair, float bottle) {
     return {
-        340.0f,
-        208.0f,
-        96.0f,
-        180.0f,
-        objectness,
-        person,
-        chair,
-        bottle,
+        340.0f, 208.0f, 96.0f, 180.0f, objectness, person, chair, bottle,
     };
 }
 
-std::vector<Detection> postprocess_one_row(const std::vector<float>& output, const YoloXPostprocessConfig& config)
-{
-    return postprocess_yolox_person_detections(
-        output.data(),
-        1,
-        8,
-        416,
-        416,
-        identity_letterbox(),
-        {416.0f, 416.0f},
-        config);
+std::vector<Detection> postprocess_one_row(const std::vector<float>& output, const YoloXPostprocessConfig& config) {
+    return postprocess_yolox_person_detections(output.data(), 1, 8, 416, 416, identity_letterbox(), {416.0f, 416.0f},
+                                               config);
 }
 
-void person_best_class_is_accepted()
-{
+void person_best_class_is_accepted() {
     const YoloXPostprocessConfig config = test_config();
     const std::vector<Detection> detections = postprocess_one_row(row(0.90f, 0.80f, 0.20f, 0.10f), config);
 
@@ -85,8 +65,7 @@ void person_best_class_is_accepted()
     require_near(detections.front().confidence, 0.72f, 0.001f, "confidence is objectness times person class score");
 }
 
-void non_person_best_class_rejects_weak_person_score()
-{
+void non_person_best_class_rejects_weak_person_score() {
     const YoloXPostprocessConfig config = test_config();
 
     const std::vector<Detection> chair = postprocess_one_row(row(0.95f, 0.24f, 0.82f, 0.12f), config);
@@ -96,8 +75,7 @@ void non_person_best_class_rejects_weak_person_score()
     require(bottle.empty(), "bottle best class rejects a weak person score even above score floor");
 }
 
-void person_near_best_class_only_within_margin()
-{
+void person_near_best_class_only_within_margin() {
     YoloXPostprocessConfig config = test_config();
     config.min_person_class_margin = 0.05f;
 
@@ -110,8 +88,7 @@ void person_near_best_class_only_within_margin()
 
 } // namespace
 
-int main()
-{
+int main() {
     try {
         person_best_class_is_accepted();
         non_person_best_class_rejects_weak_person_score();

@@ -181,3 +181,12 @@ Useful log lines include:
 - Input and output tensor shapes.
 - Throttled detection counts and inference time.
 - Throttled crop rectangle logs when Debug Overlay is enabled.
+# Runtime Statistics
+
+Use **Refresh Runtime Statistics** before collecting diagnostics. Record detector/model readiness, inference time,
+detection age, configured interval, tracker state and counts, Subject Lock state, and the current crop. Brief
+occlusions may show a bounded hold; compatible recently lost tracks can recover the same ID. A prolonged loss expires
+the hold and returns framing safely toward the full source.
+
+On CPU-limited systems, use YOLOX-Tiny, increase Detection Interval, reduce source resolution, and avoid YOLOX-S.
+The pending-frame slot remains bounded, so slower inference reduces update frequency rather than accumulating work.

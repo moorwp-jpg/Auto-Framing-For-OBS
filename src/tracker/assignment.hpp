@@ -13,10 +13,7 @@ struct AssignmentMatch {
     float iou = 0.0f;
 };
 
-std::vector<AssignmentMatch> greedy_iou_match(
-    const std::vector<Rect>& track_boxes,
-    const std::vector<Rect>& detection_boxes,
-    float iou_threshold);
+std::vector<AssignmentMatch> greedy_iou_match(const std::vector<Rect>& track_boxes,
+                                              const std::vector<Rect>& detection_boxes, float iou_threshold);
 
 } // namespace autoframing
-

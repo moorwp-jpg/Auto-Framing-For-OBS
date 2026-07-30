@@ -19,7 +19,12 @@ param(
 
     [switch]$IncludeSmall,
 
-    [switch]$NoChecksum
+    [switch]$NoChecksum,
+
+    [ValidateSet("None", "Pt", "NestedZip", "Pdb", "UnexpectedModel", "SourceFile")]
+    [string]$TestBlockedContent = "None",
+
+    [switch]$TestOmitTiny
 )
 
 $ErrorActionPreference = "Stop"
@@ -160,7 +165,10 @@ function Validate-StagedFiles {
         throw "Package validation failed; unexpected files entered the release staging area: $($relativeUnexpectedFiles -join ', ')"
     }
 
-    $blockedExtensions = @(".exe", ".pdb", ".ilk", ".exp", ".lib", ".obj", ".iobj", ".ipdb")
+    $blockedExtensions = @(
+        ".exe", ".pdb", ".ilk", ".exp", ".lib", ".obj", ".iobj", ".ipdb",
+        ".pt", ".zip", ".sha256"
+    )
     $blockedFiles = @($stagedFiles |
         Where-Object { $blockedExtensions -contains $_.Extension.ToLowerInvariant() })
 
@@ -231,7 +239,10 @@ function Validate-ZipEntries {
             throw "Package validation failed; zip contains unexpected files: $($unexpectedEntries.FullName -join ', ')"
         }
 
-        $blockedExtensions = @(".exe", ".pdb", ".ilk", ".exp", ".lib", ".obj", ".iobj", ".ipdb")
+        $blockedExtensions = @(
+            ".exe", ".pdb", ".ilk", ".exp", ".lib", ".obj", ".iobj", ".ipdb",
+            ".pt", ".zip", ".sha256"
+        )
         $blockedEntries = @($fileEntries | Where-Object {
             $extension = [System.IO.Path]::GetExtension($_.FullName).ToLowerInvariant()
             $blockedExtensions -contains $extension
@@ -385,6 +396,24 @@ foreach ($modelName in $modelNames) {
     if ($expectedLayout -notcontains $relativeModelPath) {
         $expectedLayout += $relativeModelPath
     }
+}
+
+if ($TestOmitTiny) {
+    Remove-Item -LiteralPath (Join-Path $StagingRoot "data\obs-plugins\$pluginName\models\yolox_tiny.onnx") -Force
+}
+
+$testInjection = switch ($TestBlockedContent) {
+    "Pt" { "unexpected.pt" }
+    "NestedZip" { "unexpected.zip" }
+    "Pdb" { "unexpected.pdb" }
+    "UnexpectedModel" { "data\obs-plugins\$pluginName\models\unexpected.onnx" }
+    "SourceFile" { "src\unexpected.cpp" }
+    default { $null }
+}
+if ($null -ne $testInjection) {
+    $testInjectionPath = Join-Path $StagingRoot $testInjection
+    New-Item -ItemType Directory -Force -Path (Split-Path -Parent $testInjectionPath) | Out-Null
+    Set-Content -LiteralPath $testInjectionPath -Value "package policy test fixture" -Encoding Ascii
 }
 
 Validate-StagedFiles -Root $StagingRoot -ExpectedRelativePaths $expectedLayout

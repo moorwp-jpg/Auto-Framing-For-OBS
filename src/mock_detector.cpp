@@ -7,8 +7,7 @@ namespace {
 constexpr double ns_to_seconds = 1.0 / 1000000000.0;
 }
 
-std::vector<Detection> MockPersonDetector::detect(const Frame& frame)
-{
+std::vector<Detection> MockPersonDetector::detect(const Frame& frame) {
     if (!enabled_ || frame.width == 0 || frame.height == 0) {
         return {};
     }
@@ -31,4 +30,3 @@ std::vector<Detection> MockPersonDetector::detect(const Frame& frame)
 }
 
 } // namespace autoframing
-

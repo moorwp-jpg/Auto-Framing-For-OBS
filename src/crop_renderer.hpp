@@ -30,7 +30,7 @@ struct DebugOverlayData {
 };
 
 class CropRenderer {
-public:
+  public:
     CropRenderer() = default;
     ~CropRenderer();
 
@@ -39,18 +39,13 @@ public:
 
     bool initialize();
 
-    void render(
-        obs_source_t* filter_source,
-        const Rect& crop,
-        uint32_t source_width,
-        uint32_t source_height,
-        bool debug_overlay,
-        const DebugOverlayData& debug_data,
-        gs_effect_t* fallback_effect);
+    void render(obs_source_t* filter_source, const Rect& crop, uint32_t source_width, uint32_t source_height,
+                bool debug_overlay, const DebugOverlayData& debug_data, gs_effect_t* fallback_effect);
 
-private:
+  private:
     bool ensure_effect();
-    void render_debug_overlay(const Rect& crop, uint32_t source_width, uint32_t source_height, const DebugOverlayData& data);
+    void render_debug_overlay(const Rect& crop, uint32_t source_width, uint32_t source_height,
+                              const DebugOverlayData& data);
 
     gs_effect_t* crop_effect_ = nullptr;
     gs_eparam_t* crop_min_param_ = nullptr;

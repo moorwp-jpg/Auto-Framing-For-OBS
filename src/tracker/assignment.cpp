@@ -13,11 +13,8 @@ struct CandidateMatch {
 
 } // namespace
 
-std::vector<AssignmentMatch> greedy_iou_match(
-    const std::vector<Rect>& track_boxes,
-    const std::vector<Rect>& detection_boxes,
-    float iou_threshold)
-{
+std::vector<AssignmentMatch> greedy_iou_match(const std::vector<Rect>& track_boxes,
+                                              const std::vector<Rect>& detection_boxes, float iou_threshold) {
     std::vector<CandidateMatch> candidates;
     candidates.reserve(track_boxes.size() * detection_boxes.size());
 
@@ -38,9 +35,8 @@ std::vector<AssignmentMatch> greedy_iou_match(
         }
     }
 
-    std::sort(candidates.begin(), candidates.end(), [](const CandidateMatch& a, const CandidateMatch& b) {
-        return a.iou > b.iou;
-    });
+    std::sort(candidates.begin(), candidates.end(),
+              [](const CandidateMatch& a, const CandidateMatch& b) { return a.iou > b.iou; });
 
     std::vector<bool> matched_tracks(track_boxes.size(), false);
     std::vector<bool> matched_detections(detection_boxes.size(), false);
@@ -60,4 +56,3 @@ std::vector<AssignmentMatch> greedy_iou_match(
 }
 
 } // namespace autoframing
-

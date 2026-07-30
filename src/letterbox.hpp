@@ -16,8 +16,7 @@ struct LetterboxInfo {
     float pad_y = 0.0f;
 };
 
-inline Rect map_letterboxed_model_box_to_source(Rect box, const LetterboxInfo& info, const Size& source_size)
-{
+inline Rect map_letterboxed_model_box_to_source(Rect box, const LetterboxInfo& info, const Size& source_size) {
     if (!source_size.valid() || info.scale <= 0.0f) {
         return {};
     }

@@ -12,22 +12,20 @@ using namespace autoframing;
 
 namespace {
 
-void require(bool condition, const std::string& message)
-{
+void require(bool condition, const std::string& message) {
     if (!condition) {
         throw std::runtime_error(message);
     }
 }
 
-void require_near(float actual, float expected, float tolerance, const std::string& message)
-{
+void require_near(float actual, float expected, float tolerance, const std::string& message) {
     if (std::fabs(actual - expected) > tolerance) {
-        throw std::runtime_error(message + " actual=" + std::to_string(actual) + " expected=" + std::to_string(expected));
+        throw std::runtime_error(message + " actual=" + std::to_string(actual) +
+                                 " expected=" + std::to_string(expected));
     }
 }
 
-PersonTrack track(int id, Rect box)
-{
+PersonTrack track(int id, Rect box) {
     PersonTrack person;
     person.id = id;
     person.box = box;
@@ -35,8 +33,7 @@ PersonTrack track(int id, Rect box)
     return person;
 }
 
-void crop_stays_in_bounds_and_respects_max_zoom()
-{
+void crop_stays_in_bounds_and_respects_max_zoom() {
     CropController controller;
     AutoFramingSettings settings = default_settings();
     settings.max_zoom = 2.0;
@@ -51,8 +48,7 @@ void crop_stays_in_bounds_and_respects_max_zoom()
     require_near(crop.width / crop.height, 16.0f / 9.0f, 0.001f, "aspect ratio is preserved");
 }
 
-void crop_eases_back_to_full_frame_without_target()
-{
+void crop_eases_back_to_full_frame_without_target() {
     CropController controller;
     AutoFramingSettings settings = default_settings();
     settings.max_zoom = 3.0;
@@ -71,25 +67,21 @@ void crop_eases_back_to_full_frame_without_target()
     require_near(crop.height, 720.0f, 2.5f, "no-target height returns to full frame");
 }
 
-void group_mode_contains_people()
-{
+void group_mode_contains_people() {
     CropController controller;
     AutoFramingSettings settings = default_settings();
     settings.tracking_mode = TrackingMode::Group;
     settings.max_zoom = 4.0;
 
     const Rect crop = controller.update(
-        {1920.0f, 1080.0f},
-        {track(1, {220.0f, 350.0f, 170.0f, 430.0f}), track(2, {1450.0f, 330.0f, 180.0f, 450.0f})},
-        settings,
-        1.0);
+        {1920.0f, 1080.0f}, {track(1, {220.0f, 350.0f, 170.0f, 430.0f}), track(2, {1450.0f, 330.0f, 180.0f, 450.0f})},
+        settings, 1.0);
 
     require(crop.left() <= 220.0f, "group crop contains left subject");
     require(crop.right() >= 1630.0f, "group crop contains right subject");
 }
 
-void dead_zone_holds_center_for_small_motion()
-{
+void dead_zone_holds_center_for_small_motion() {
     CropController controller;
     AutoFramingSettings settings = default_settings();
     settings.max_zoom = 3.0;
@@ -102,8 +94,7 @@ void dead_zone_holds_center_for_small_motion()
     require_near(second.center_x(), first.center_x(), 0.5f, "dead zone keeps crop center stable");
 }
 
-void soft_dead_zone_softens_motion_between_inner_and_outer_zone()
-{
+void soft_dead_zone_softens_motion_between_inner_and_outer_zone() {
     CropController controller;
     AutoFramingSettings settings = default_settings();
     settings.max_zoom = 6.0;
@@ -120,8 +111,7 @@ void soft_dead_zone_softens_motion_between_inner_and_outer_zone()
             "soft dead zone does not jump fully to mid-zone target");
 }
 
-void soft_dead_zone_freezes_inside_inner_zone()
-{
+void soft_dead_zone_freezes_inside_inner_zone() {
     CropController controller;
     AutoFramingSettings settings = default_settings();
     settings.max_zoom = 6.0;
@@ -137,8 +127,7 @@ void soft_dead_zone_freezes_inside_inner_zone()
     require_near(inner_target.center_y(), first.center_y(), 0.5f, "inner dead zone freezes vertical target");
 }
 
-void soft_dead_zone_keeps_outer_target_unchanged()
-{
+void soft_dead_zone_keeps_outer_target_unchanged() {
     CropController softened_controller;
     CropController full_tracking_controller;
     AutoFramingSettings softened_settings = default_settings();
@@ -153,8 +142,7 @@ void soft_dead_zone_keeps_outer_target_unchanged()
     full_tracking_controller.update(source, {track(1, {940.0f, 760.0f, 120.0f, 320.0f})}, full_tracking_settings, 1.0);
 
     softened_controller.update(source, {track(1, {1220.0f, 760.0f, 120.0f, 320.0f})}, softened_settings, 1.0);
-    full_tracking_controller.update(source, {track(1, {1220.0f, 760.0f, 120.0f, 320.0f})},
-                                    full_tracking_settings, 1.0);
+    full_tracking_controller.update(source, {track(1, {1220.0f, 760.0f, 120.0f, 320.0f})}, full_tracking_settings, 1.0);
 
     const Rect softened_target = softened_controller.target_crop();
     const Rect full_target = full_tracking_controller.target_crop();
@@ -164,8 +152,7 @@ void soft_dead_zone_keeps_outer_target_unchanged()
                  "outer dead zone uses full vertical tracking");
 }
 
-void soft_dead_zone_applies_per_axis()
-{
+void soft_dead_zone_applies_per_axis() {
     CropController softened_controller;
     CropController full_tracking_controller;
     AutoFramingSettings softened_settings = default_settings();
@@ -178,12 +165,10 @@ void soft_dead_zone_applies_per_axis()
     const Size source{3840.0f, 2160.0f};
     const Rect first =
         softened_controller.update(source, {track(1, {940.0f, 760.0f, 120.0f, 320.0f})}, softened_settings, 1.0);
-    full_tracking_controller.update(source, {track(1, {940.0f, 760.0f, 120.0f, 320.0f})}, full_tracking_settings,
-                                    1.0);
+    full_tracking_controller.update(source, {track(1, {940.0f, 760.0f, 120.0f, 320.0f})}, full_tracking_settings, 1.0);
 
     softened_controller.update(source, {track(1, {1220.0f, 800.0f, 120.0f, 320.0f})}, softened_settings, 1.0);
-    full_tracking_controller.update(source, {track(1, {1220.0f, 800.0f, 120.0f, 320.0f})},
-                                    full_tracking_settings, 1.0);
+    full_tracking_controller.update(source, {track(1, {1220.0f, 800.0f, 120.0f, 320.0f})}, full_tracking_settings, 1.0);
 
     const Rect softened_target = softened_controller.target_crop();
     const Rect full_target = full_tracking_controller.target_crop();
@@ -193,8 +178,7 @@ void soft_dead_zone_applies_per_axis()
                  "soft dead zone freezes vertical target inside inner zone");
 }
 
-void tight_framing_uses_head_and_shoulders_region()
-{
+void tight_framing_uses_head_and_shoulders_region() {
     CropController tight_controller;
     CropController balanced_controller;
     AutoFramingSettings tight_settings = default_settings();
@@ -214,8 +198,7 @@ void tight_framing_uses_head_and_shoulders_region()
     require(tight.center_y() < subject.box.center_y(), "tight framing centers above the full-body center");
 }
 
-void letterboxed_model_box_maps_to_source_coordinates()
-{
+void letterboxed_model_box_maps_to_source_coordinates() {
     LetterboxInfo letterbox;
     letterbox.input_width = 416;
     letterbox.input_height = 416;
@@ -225,7 +208,8 @@ void letterboxed_model_box_maps_to_source_coordinates()
     letterbox.pad_x = 0.0f;
     letterbox.pad_y = 0.0f;
 
-    const Rect source_box = map_letterboxed_model_box_to_source({65.0f, 32.5f, 130.0f, 65.0f}, letterbox, {640.0f, 480.0f});
+    const Rect source_box =
+        map_letterboxed_model_box_to_source({65.0f, 32.5f, 130.0f, 65.0f}, letterbox, {640.0f, 480.0f});
 
     require_near(source_box.x, 100.0f, 0.001f, "letterbox x maps to source");
     require_near(source_box.y, 50.0f, 0.001f, "letterbox y maps to source");
@@ -233,8 +217,7 @@ void letterboxed_model_box_maps_to_source_coordinates()
     require_near(source_box.height, 100.0f, 0.001f, "letterbox height maps to source");
 }
 
-void packed_yuv_odd_trailing_pixel_does_not_require_second_pixel_bytes()
-{
+void packed_yuv_odd_trailing_pixel_does_not_require_second_pixel_bytes() {
     const uint8_t yuy2_tail[] = {90, 120};
     const PackedYuvGroup yuy2 = decode_packed_yuv_group(yuy2_tail, PackedYuvFormat::Yuy2, false);
     require(yuy2.y0 == 90, "YUY2 trailing pixel Y is decoded");
@@ -257,8 +240,7 @@ void packed_yuv_odd_trailing_pixel_does_not_require_second_pixel_bytes()
     require(!yvyu.has_second_pixel, "YVYU trailing pixel has no second pixel");
 }
 
-void packed_yuv_even_pixel_pair_still_decodes_both_pixels()
-{
+void packed_yuv_even_pixel_pair_still_decodes_both_pixels() {
     const uint8_t yuy2_pair[] = {90, 120, 91, 122};
     const PackedYuvGroup yuy2 = decode_packed_yuv_group(yuy2_pair, PackedYuvFormat::Yuy2, true);
     require(yuy2.y0 == 90 && yuy2.y1 == 91, "YUY2 pair Ys are decoded");
@@ -280,8 +262,7 @@ void packed_yuv_even_pixel_pair_still_decodes_both_pixels()
 
 } // namespace
 
-int main()
-{
+int main() {
     try {
         crop_stays_in_bounds_and_respects_max_zoom();
         crop_eases_back_to_full_frame_without_target();

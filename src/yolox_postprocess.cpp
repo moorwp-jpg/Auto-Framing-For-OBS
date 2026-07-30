@@ -14,8 +14,8 @@ struct Candidate {
     float score = 0.0f;
 };
 
-std::vector<std::pair<int, int>> yolox_grids_for_shape(size_t rows, int input_width, int input_height, std::vector<int>& strides)
-{
+std::vector<std::pair<int, int>> yolox_grids_for_shape(size_t rows, int input_width, int input_height,
+                                                       std::vector<int>& strides) {
     std::vector<std::pair<int, int>> grids;
     strides.clear();
 
@@ -37,8 +37,8 @@ std::vector<std::pair<int, int>> yolox_grids_for_shape(size_t rows, int input_wi
     return grids;
 }
 
-bool output_looks_already_decoded(const float* output, size_t rows, size_t features, int input_width, int input_height)
-{
+bool output_looks_already_decoded(const float* output, size_t rows, size_t features, int input_width,
+                                  int input_height) {
     const size_t sample_count = std::min<size_t>(rows, 256);
     const size_t step = std::max<size_t>(1, rows / sample_count);
     const float wide_x = static_cast<float>(input_width) * 0.75f;
@@ -55,16 +55,9 @@ bool output_looks_already_decoded(const float* output, size_t rows, size_t featu
     return false;
 }
 
-Rect decode_yolox_box(
-    const float* row,
-    size_t row_index,
-    size_t rows,
-    int input_width,
-    int input_height,
-    const std::vector<std::pair<int, int>>& grids,
-    const std::vector<int>& strides,
-    bool already_decoded)
-{
+Rect decode_yolox_box(const float* row, size_t row_index, size_t rows, int input_width, int input_height,
+                      const std::vector<std::pair<int, int>>& grids, const std::vector<int>& strides,
+                      bool already_decoded) {
     float center_x = row[0];
     float center_y = row[1];
     float width = row[2];
@@ -86,9 +79,9 @@ Rect decode_yolox_box(
     return make_centered_rect(center_x, center_y, width, height);
 }
 
-std::vector<Detection> nms(std::vector<Candidate> candidates, float nms_threshold)
-{
-    std::sort(candidates.begin(), candidates.end(), [](const Candidate& a, const Candidate& b) { return a.score > b.score; });
+std::vector<Detection> nms(std::vector<Candidate> candidates, float nms_threshold) {
+    std::sort(candidates.begin(), candidates.end(),
+              [](const Candidate& a, const Candidate& b) { return a.score > b.score; });
 
     std::vector<Detection> detections;
     std::vector<bool> suppressed(candidates.size(), false);
@@ -116,11 +109,8 @@ std::vector<Detection> nms(std::vector<Candidate> candidates, float nms_threshol
 
 } // namespace
 
-YoloXClassFilterResult evaluate_yolox_person_class_scores(
-    const float* row,
-    size_t features,
-    const YoloXPostprocessConfig& config)
-{
+YoloXClassFilterResult evaluate_yolox_person_class_scores(const float* row, size_t features,
+                                                          const YoloXPostprocessConfig& config) {
     YoloXClassFilterResult result;
     if (row == nullptr || features <= 5 + person_class_id) {
         return result;
@@ -150,16 +140,10 @@ YoloXClassFilterResult evaluate_yolox_person_class_scores(
     return result;
 }
 
-std::vector<Detection> postprocess_yolox_person_detections(
-    const float* output,
-    size_t rows,
-    size_t features,
-    int input_width,
-    int input_height,
-    const LetterboxInfo& letterbox,
-    const Size& source_size,
-    const YoloXPostprocessConfig& config)
-{
+std::vector<Detection> postprocess_yolox_person_detections(const float* output, size_t rows, size_t features,
+                                                           int input_width, int input_height,
+                                                           const LetterboxInfo& letterbox, const Size& source_size,
+                                                           const YoloXPostprocessConfig& config) {
     if (output == nullptr || features < 6 || rows == 0 || input_width <= 0 || input_height <= 0) {
         return {};
     }
