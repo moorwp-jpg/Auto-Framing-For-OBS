@@ -1,16 +1,35 @@
 # Install OBS Auto Framing
 
-`obs-auto-framing` is packaged as a normal OBS plugin zip. The zip already uses the OBS directory layout, so installation is an extract-and-merge operation.
+OBS Auto Framing v0.2.0 Preview is available as a Windows installer and a portable/manual ZIP. Both contain only the
+public YOLOX-Tiny package and use ONNX Runtime CPU by default.
 
-## Normal OBS Install
+## Recommended Windows installer
 
 1. Close OBS Studio.
-2. Find the OBS install root, usually `C:\Program Files\obs-studio`. This is the folder that contains `bin\64bit\obs64.exe`.
-3. Extract `obs-auto-framing-v0.1.1-windows-x64.zip` into that OBS install root.
-4. Start OBS.
-5. Add or select a video source, open Filters, then add the `Auto Framing` video filter.
+2. Download `obs-auto-framing-v0.2.0-windows-x64-installer.exe` and its `.sha256` file.
+3. Run the installer. Administrator permission is required when OBS is under Program Files.
+4. Select the OBS root containing `bin\64bit\obs64.exe`.
+5. Start OBS, select a video source, open Filters, and add the `Auto Framing` video filter.
 
-The release package installs these runtime files:
+The installer supports the standard Program Files installation, custom installation paths, portable OBS roots, and
+prepared development/runtime roots. It refuses an invalid directory and never creates a fake OBS installation. It
+also refuses installation, upgrade, repair, and uninstallation while `obs64.exe` is running.
+
+For unattended installation into a user-writable portable or test root, pass `/CURRENTUSER` together with Inno
+Setup's silent options and `/DIR=<OBS root>`. Program Files installations keep the default administrator requirement.
+Silent validation failures return a nonzero process exit code.
+
+The v0.2.0 installer is currently unsigned. Windows SmartScreen may warn about an unsigned new application; verify
+the downloaded SHA-256 checksum and that the file came from the project’s GitHub Release before continuing.
+
+## Portable or manual ZIP
+
+1. Close OBS Studio.
+2. Find the OBS root containing `bin\64bit\obs64.exe`.
+3. Extract `obs-auto-framing-v0.2.0-windows-x64.zip` into that root.
+4. Start OBS and add the `Auto Framing` video filter.
+
+The release ZIP installs this runtime layout:
 
 ```text
 obs-plugins\64bit\obs-auto-framing.dll
@@ -20,84 +39,56 @@ data\obs-plugins\obs-auto-framing\locale\en-US.ini
 data\obs-plugins\obs-auto-framing\models\yolox_tiny.onnx
 ```
 
-It also includes `README.md`, `LICENSE`, `SECURITY.md`, `docs\install.md`, `docs\troubleshooting.md`, and `THIRD_PARTY_NOTICES.md`.
+The ZIP also contains `README.md`, `LICENSE`, `SECURITY.md`, `docs\install.md`, `docs\troubleshooting.md`, and
+`THIRD_PARTY_NOTICES.md`.
 
-## OBS Source Or Build Runtime
+## Upgrade behavior
 
-For an OBS build tree, use the runtime root that contains `bin\64bit\obs64.exe`. With a standard Windows OBS build this is commonly:
+The installer uses one stable AppId across public versions. Installing v0.2.0 over the v0.1.1 public layout replaces
+only OBS Auto Framing-owned files. OBS scenes, profiles, source settings, and plugin configuration are not removed.
 
-```text
-C:\src\obs-studio\build_x64\rundir\RelWithDebInfo
-```
+`obs-plugins\64bit\onnxruntime.dll` is treated as shared. An identical pre-existing runtime is reused. The installer
+also recognizes the exact runtime published in the v0.1.1 public ZIP and replaces it as the documented compatibility
+decision for that supported upgrade. Any other differing runtime stops installation with a compatibility message
+instead of being silently replaced.
 
-Extract the release zip into that runtime root. For local development, keep using:
+## Default model policy
 
-```powershell
-.\scripts\install_to_obs.ps1 -PluginBuildDir .\build_x64\bin\RelWithDebInfo -ObsRuntimeRoot <ObsRuntimeRoot>
-```
+The normal installer and ZIP contain only `yolox_tiny.onnx`. YOLOX-Nano, YOLOX-S, and compatible custom YOLOX models
+remain optional. This release does not include YOLO26 or pose models.
 
-`install_to_obs.ps1` is for local testing. `scripts\package_release.ps1` is for making distribution zips.
-
-## Default Model Policy
-
-Release packages bundle `YOLOX-Tiny` by default. It is the recommended CPU model and is selected by the default filter preset, so users do not need to choose a model path manually.
-
-Optional models can be downloaded before packaging:
-
-```powershell
-.\scripts\download_yolox_model.ps1 -Model nano
-.\scripts\download_yolox_model.ps1 -Model s
-```
-
-Then include them in a release package only when needed:
-
-```powershell
-.\scripts\package_release.ps1 -IncludeNano
-.\scripts\package_release.ps1 -IncludeSmall
-```
-
-`YOLOX-Nano` is a lightweight fallback. `YOLOX-S` can be more accurate, but it is larger and slower on CPU.
-
-## Recommended First Settings
+Recommended first settings:
 
 - Detection Model: `Balanced - YOLOX-Tiny`
 - Tracking Algorithm: `ByteTrack`
-- Framing Preset: `Headroom` or the `Presenter Smooth` user preset
+- Framing Preset: `Headroom` or `Presenter Smooth`
 
 ## Uninstall
 
-Close OBS, then remove:
+Installer users can remove OBS Auto Framing through Windows Installed Apps or the generated uninstaller under:
 
 ```text
-obs-plugins\64bit\obs-auto-framing.dll
-data\obs-plugins\obs-auto-framing
+<ObsRoot>\data\obs-plugins\obs-auto-framing\installer
 ```
 
-Remove `obs-plugins\64bit\onnxruntime.dll` only if no other plugin in that OBS install depends on it.
+Close OBS first. The uninstaller reads its ownership manifest and removes only listed files whose current SHA-256
+still matches the installed hash and that the manifest proves were created by this installer. It preserves modified
+files and every file that existed before installation, including a pre-existing or subsequently changed shared ONNX
+Runtime. Empty OBS Auto Framing-owned directories are removed; generic OBS directories are never recursively deleted.
 
-## Troubleshooting
+ZIP installations require manual removal. Close OBS, remove
+`obs-plugins\64bit\obs-auto-framing.dll` and `data\obs-plugins\obs-auto-framing`, and remove
+`obs-plugins\64bit\onnxruntime.dll` only when no other OBS plugin depends on it.
 
-If the plugin does not appear:
+## Development/runtime installation
 
-- Confirm the files were extracted into the OBS root that contains `bin\64bit\obs64.exe`, not into `bin\64bit` directly.
-- Confirm OBS is the 64-bit Windows build and the plugin DLL is at `obs-plugins\64bit\obs-auto-framing.dll`.
-- Confirm `onnxruntime.dll` is next to the plugin DLL at `obs-plugins\64bit\onnxruntime.dll`.
-- Check `Help > Log Files > View Current Log` for messages containing `obs-auto-framing` or module load errors.
-- If Windows blocked a downloaded zip, right-click the zip or DLL, open Properties, choose Unblock, then extract again.
-- Install the current Microsoft Visual C++ Redistributable if the OBS log reports a missing C++ runtime DLL.
-- See `docs\troubleshooting.md` for OBS log locations and common runtime failures.
+For local testing against an OBS build runtime:
 
-If the filter appears but detection does not run:
+```powershell
+.\scripts\install_to_obs.ps1 `
+    -PluginBuildDir .\build_x64\bin\RelWithDebInfo `
+    -ObsRuntimeRoot <ObsRuntimeRoot>
+```
 
-- Confirm `data\obs-plugins\obs-auto-framing\models\yolox_tiny.onnx` exists.
-- In the filter properties, click Refresh Runtime Status and check the model path/status lines.
-- Use `Balanced - YOLOX-Tiny` first. If `YOLOX-S` is selected and inference is slow, switch back to Tiny or increase Detection Interval.
-# Public package boundary
-
-The normal Windows package contains the plugin DLL, ONNX Runtime DLL, crop effect, locale, public notices, and the
-YOLOX-Tiny model. Nano or S models appear only when explicitly requested during packaging. Package validation compares
-both staging and archive contents with an explicit allowlist and rejects build output, source payloads, model-training
-files, nested archives, and checksums.
-
-YOLOX-Tiny with ONNX Runtime CPU is the conservative default. If the model cannot be loaded, detection fails safely
-and framing returns toward the full source rather than blocking rendering.
+`install_to_obs.ps1` is for local testing. `scripts\package_release.ps1` and `scripts\build_installer.ps1` create
+public release artifacts.

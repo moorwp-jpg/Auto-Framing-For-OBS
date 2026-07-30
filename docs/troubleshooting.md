@@ -10,7 +10,8 @@ Confirm the plugin DLL was installed to:
 
 Confirm you launched OBS from the same runtime root you installed into. If using an OBS source build, start the OBS executable under the matching `rundir\<Config>` folder.
 
-Open the OBS log and search for `obs-auto-framing`. You should see plugin load and filter registration messages, including `version 0.1.1 Preview`.
+Open the OBS log and search for `obs-auto-framing`. You should see plugin load and filter registration messages,
+including `version 0.2.0 Preview`.
 
 ## Missing onnxruntime.dll
 
@@ -20,7 +21,9 @@ OBS must find `onnxruntime.dll` beside the plugin DLL:
 <ObsRuntimeRoot>\obs-plugins\64bit\onnxruntime.dll
 ```
 
-For a release install, close OBS and extract the release zip into the OBS root again. The zip includes `onnxruntime.dll`.
+For an installer release, close OBS and run repair/reinstall. For a manual release, extract the v0.2.0 ZIP into the
+OBS root again. Both include `onnxruntime.dll`. The installer reuses an identical pre-existing runtime and refuses to
+silently replace a different shared runtime.
 
 For a local development install, run:
 
@@ -45,7 +48,8 @@ The bundled model filenames are:
 
 Custom ONNX uses only the Custom Model Path selected in the filter settings.
 
-If no model exists, OBS should not crash. The filter status will show `Model missing`, and the log will include the failed model path resolution. A normal v0.1.1 Preview release zip should include `yolox_tiny.onnx`.
+If no model exists, OBS should not crash. The filter status will show `Model missing`, and the log will include the
+failed model path resolution. A normal v0.2.0 Preview installer or ZIP includes `yolox_tiny.onnx`.
 
 ## crop.effect Not Loading
 
@@ -174,7 +178,7 @@ obs-auto-framing
 
 Useful log lines include:
 
-- Plugin load with version `0.1.1 Preview` and filter registration.
+- Plugin load with version `0.2.0 Preview` and filter registration.
 - Detector backend selection.
 - Resolved model path.
 - ONNX Runtime initialization success or failure.
@@ -190,3 +194,16 @@ the hold and returns framing safely toward the full source.
 
 On CPU-limited systems, use YOLOX-Tiny, increase Detection Interval, reduce source resolution, and avoid YOLOX-S.
 The pending-frame slot remains bounded, so slower inference reduces update frequency rather than accumulating work.
+
+## Installer is refused
+
+- Close OBS before install, upgrade, repair, or uninstall. Silent mode returns a nonzero code when `obs64.exe` is
+  running.
+- Select the OBS root containing `bin\64bit\obs64.exe`, not `bin\64bit` itself.
+- If a different `obs-plugins\64bit\onnxruntime.dll` exists, the installer stops instead of replacing a potentially
+  shared runtime. Use a separate OBS root or review compatibility before manual installation.
+- The v0.2.0 installer is unsigned. Windows SmartScreen may warn; verify the `.sha256` file from the GitHub Release.
+
+The uninstaller logs and preserves files whose hash changed after installation, plus files that existed before
+installation—including a pre-existing shared ONNX Runtime. Installer users can uninstall through Windows Installed
+Apps; manual ZIP users must remove the plugin files manually.

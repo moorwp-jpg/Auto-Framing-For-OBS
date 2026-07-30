@@ -1,53 +1,48 @@
-# v0.1.1 Preview Release Checklist
+# v0.2.0 Preview release checklist
 
-Use this checklist against the exact zip intended for release.
+Use this checklist first on the release-preparation PR, then repeat it against artifacts built from the merged public
+`main`. Do not tag or publish from a feature branch.
 
-## Package
+## Repository and verification
 
-- [ ] Build `RelWithDebInfo` or `Release`.
+- [ ] Confirm `buildspec.json` reports `0.2.0` and `Preview`.
+- [ ] Confirm the working tree is clean and public `main` matches `origin/main`.
+- [ ] Run canonical RelWithDebInfo verification.
+- [ ] Run canonical Debug verification.
+- [ ] Build the full public plugin with MSVC.
+- [ ] Confirm the compiled plugin reports `0.2.0 Preview`.
+- [ ] Run `scripts\test_package_policy.ps1`.
+- [ ] Run `scripts\test_installer_policy.ps1`.
+
+## Package and installer
+
 - [ ] Run `scripts\package_release.ps1`.
-- [ ] Confirm the zip name is `obs-auto-framing-v0.1.1-windows-x64.zip`.
-- [ ] Confirm the zip contains `obs-plugins\64bit\obs-auto-framing.dll`.
-- [ ] Confirm the zip contains `obs-plugins\64bit\onnxruntime.dll`.
-- [ ] Confirm the zip contains `data\obs-plugins\obs-auto-framing\effects\crop.effect`.
-- [ ] Confirm the zip contains `data\obs-plugins\obs-auto-framing\locale\en-US.ini`.
-- [ ] Confirm the zip contains `data\obs-plugins\obs-auto-framing\models\yolox_tiny.onnx`.
-- [ ] Confirm `yolox_nano.onnx` and `yolox_s.onnx` are absent unless intentionally packaged with `-IncludeNano` or `-IncludeSmall`.
-- [ ] Confirm the zip does not contain build directories, `third_party`, `.git`, `out`, PDBs, test executables, or generated staging files.
-- [ ] Confirm `THIRD_PARTY_NOTICES.md` is included.
-- [ ] Record the SHA256 checksum.
+- [ ] Confirm the ZIP and staging match the allowlist in `docs\release_layout.md`.
+- [ ] Confirm YOLOX-Tiny is present and Nano, S, YOLO26, pose, private assets, sources, PDBs, and nested archives are absent.
+- [ ] Run `scripts\build_installer.ps1` with Inno Setup 6.
+- [ ] Confirm the installer is unsigned unless an actual code-signing step was completed.
+- [ ] Record SHA-256 hashes for the ZIP and installer.
 
-## GitHub Release
+## Runtime validation
 
-- [ ] Confirm the package zip was created in `out\release`.
-- [ ] Confirm the `.sha256` checksum was created in `out\release`.
-- [ ] Review `docs\release_notes\v0.1.1.md`.
-- [ ] Run `scripts\publish_release.ps1` and inspect the dry-run `gh release create` command.
-- [ ] Run `scripts\publish_release.ps1 -Publish`.
-- [ ] Confirm the GitHub Release is marked as a prerelease.
-- [ ] Confirm the zip and checksum are attached as release assets.
-- [ ] Download the release zip from GitHub and confirm it installs successfully by extraction.
-- [ ] Do not commit the generated zip or checksum; they are release assets only.
+- [ ] Clean install into a disposable OBS 32.1.2 root.
+- [ ] Reject a root without `bin\64bit\obs64.exe` and confirm no files were written.
+- [ ] Reject install while `obs64.exe` is running.
+- [ ] Reinstall/repair v0.2.0 without duplicate or nested paths.
+- [ ] Upgrade the v0.1.1 public manual layout while preserving OBS configuration.
+- [ ] Confirm a different pre-existing ONNX Runtime is not silently replaced.
+- [ ] Uninstall only hash-proven plugin-owned files.
+- [ ] Preserve pre-existing and modified shared ONNX Runtime files.
+- [ ] Confirm OBS and unrelated files remain functional after uninstall.
+- [ ] Validate silent install and uninstall success and failure exit codes.
+- [ ] Confirm the Auto Framing filter appears, YOLOX-Tiny initializes, Runtime Statistics are coherent, and video tests pass.
 
-## Install Smoke Test
+## Release dry run and post-merge publication
 
-- [ ] Extract the zip into a clean OBS install or OBS runtime root.
-- [ ] Start OBS from that same runtime root.
-- [ ] Confirm the OBS log shows `obs-auto-framing` loaded with version `0.1.1 Preview`.
-- [ ] Confirm `Auto Framing` appears as a video filter.
-- [ ] Add the filter with default settings and leave Custom Model Path empty.
-- [ ] Confirm runtime status shows plugin version, ONNX Runtime CPU, `Balanced - YOLOX-Tiny`, model loaded, and the bundled model path.
-- [ ] Confirm the OBS log shows the resolved `yolox_tiny.onnx` path and ONNX Runtime initialization success.
-
-## Manual QA
-
-- [ ] Presenter Smooth follows one moving presenter smoothly.
-- [ ] Group mode expands the crop to keep multiple people framed.
-- [ ] Subject Lock keeps the selected presenter or group locked while new detections enter.
-- [ ] Tight framing creates the expected head-and-shoulders crop without cutting off the face.
-- [ ] Soft dead-zone behavior avoids jitter during small movements.
-- [ ] Debug Overlay shows detections, track IDs/states, crop bounds, dead-zone, and status summaries.
-- [ ] Debug Overlay can be disabled without changing tracking behavior.
-- [ ] YOLOX-S, if intentionally bundled, loads and reports slower CPU performance guidance when inference is slow.
-- [ ] Run a 10-minute stability test with ONNX Runtime CPU, `Balanced - YOLOX-Tiny`, ByteTrack, and Presenter Smooth.
-- [ ] During the stability test, confirm OBS does not freeze, logs are not flooded, and the crop returns to full frame when no target is present.
+- [ ] Review `docs\release_notes\v0.2.0.md`.
+- [ ] Run `scripts\publish_release.ps1 -NoAuthCheck` and confirm all four assets appear.
+- [ ] Merge only after PR review; do not merge automatically.
+- [ ] Rebuild and retest exact final artifacts from merged `main`.
+- [ ] Run `scripts\publish_release.ps1 -Publish -Draft`.
+- [ ] Inspect tag `v0.2.0`, title `OBS Auto Framing v0.2.0 Preview`, prerelease status, notes, sizes, and all hashes.
+- [ ] Publish the draft only after final maintainer review.
