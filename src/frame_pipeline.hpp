@@ -5,6 +5,7 @@
 #include <cmath>
 #include <cstdint>
 #include <limits>
+#include <utility>
 
 namespace autoframing {
 
@@ -15,16 +16,34 @@ struct PendingFrameMetadata {
     uint64_t replacement_count = 0;
 };
 
-inline bool submit_pending_frame(PendingFrameMetadata& pending, uint64_t timestamp_ns, uint64_t generation) {
-    if (generation == 0 || (pending.available && timestamp_ns < pending.timestamp_ns)) {
+inline bool pipeline_generation_is_current(uint64_t work_generation, uint64_t current_generation) {
+    return work_generation != 0 && work_generation == current_generation;
+}
+
+inline bool pending_frame_submission_is_allowed(bool pending_available, uint64_t pending_timestamp_ns,
+                                                uint64_t pending_generation, uint64_t candidate_timestamp_ns,
+                                                uint64_t tick_generation, uint64_t current_generation) {
+    if (!pipeline_generation_is_current(tick_generation, current_generation)) {
         return false;
     }
-    if (pending.available) {
+    if (!pending_available || pending_generation != tick_generation) {
+        return true;
+    }
+    return candidate_timestamp_ns >= pending_timestamp_ns;
+}
+
+inline bool submit_pending_frame(PendingFrameMetadata& pending, uint64_t timestamp_ns, uint64_t tick_generation,
+                                 uint64_t current_generation) {
+    if (!pending_frame_submission_is_allowed(pending.available, pending.timestamp_ns, pending.generation, timestamp_ns,
+                                             tick_generation, current_generation)) {
+        return false;
+    }
+    if (pending.available && pending.generation == tick_generation) {
         ++pending.replacement_count;
     }
     pending.available = true;
     pending.timestamp_ns = timestamp_ns;
-    pending.generation = generation;
+    pending.generation = tick_generation;
     return true;
 }
 
@@ -34,8 +53,32 @@ inline void invalidate_pending_frame(PendingFrameMetadata& pending) {
     pending.generation = 0;
 }
 
-inline bool pipeline_generation_is_current(uint64_t work_generation, uint64_t current_generation) {
-    return work_generation != 0 && work_generation == current_generation;
+template <typename Commit>
+inline bool commit_if_generation_current(uint64_t tick_generation, uint64_t current_generation, Commit&& commit) {
+    if (!pipeline_generation_is_current(tick_generation, current_generation)) {
+        return false;
+    }
+    std::forward<Commit>(commit)();
+    return true;
+}
+
+enum class ResultGenerationDisposition {
+    Consume,
+    DiscardStale,
+    LeaveAvailable,
+};
+
+inline ResultGenerationDisposition result_generation_disposition(uint64_t result_generation, uint64_t tick_generation,
+                                                                 uint64_t current_generation) {
+    if (!pipeline_generation_is_current(tick_generation, current_generation)) {
+        return ResultGenerationDisposition::LeaveAvailable;
+    }
+    if (result_generation == tick_generation) {
+        return ResultGenerationDisposition::Consume;
+    }
+    return pipeline_generation_is_current(result_generation, current_generation)
+               ? ResultGenerationDisposition::LeaveAvailable
+               : ResultGenerationDisposition::DiscardStale;
 }
 
 struct DetectionSchedulingState {
@@ -47,6 +90,7 @@ struct DetectionSchedulingState {
     ReacquisitionRuntime reacquisition;
     uint32_t effective_interval_ms = 150;
     bool interval_budget_limited = false;
+    uint64_t completion_generation = 0;
     uint32_t pending_detector_completions = 0;
 };
 
@@ -55,12 +99,17 @@ inline void reset_detection_scheduling(DetectionSchedulingState& state, uint32_t
     state.effective_interval_ms = public_reacquisition_config(configured_interval_ms).normal_interval_ms;
 }
 
-inline bool record_current_detector_completion(DetectionSchedulingState& state, double inference_ms,
-                                               double alpha = 0.20) {
-    if (!std::isfinite(inference_ms) || inference_ms < 0.0 || !std::isfinite(alpha) || alpha <= 0.0 || alpha > 1.0) {
+inline bool record_current_detector_completion(DetectionSchedulingState& state, uint64_t completion_generation,
+                                               double inference_ms, double alpha = 0.20) {
+    if (completion_generation == 0 || !std::isfinite(inference_ms) || inference_ms < 0.0 || !std::isfinite(alpha) ||
+        alpha <= 0.0 || alpha > 1.0) {
         return false;
     }
 
+    if (state.pending_detector_completions > 0 && state.completion_generation != completion_generation) {
+        state.pending_detector_completions = 0;
+    }
+    state.completion_generation = completion_generation;
     state.last_detector_inference_ms = inference_ms;
     if (state.smoothed_detector_inference_ms <= 0.0 || !std::isfinite(state.smoothed_detector_inference_ms)) {
         state.smoothed_detector_inference_ms = inference_ms;
@@ -77,11 +126,17 @@ inline bool record_detector_completion_if_current(DetectionSchedulingState& stat
                                                   uint64_t current_generation, double inference_ms,
                                                   double alpha = 0.20) {
     return pipeline_generation_is_current(work_generation, current_generation) &&
-           record_current_detector_completion(state, inference_ms, alpha);
+           record_current_detector_completion(state, work_generation, inference_ms, alpha);
 }
 
-inline uint32_t consume_detector_completions(DetectionSchedulingState& state) {
+inline uint32_t consume_detector_completions_if_current(DetectionSchedulingState& state, uint64_t tick_generation,
+                                                        uint64_t current_generation) {
+    if (!pipeline_generation_is_current(tick_generation, current_generation) ||
+        state.completion_generation != tick_generation) {
+        return 0;
+    }
     const uint32_t completions = state.pending_detector_completions;
+    state.completion_generation = 0;
     state.pending_detector_completions = 0;
     return completions;
 }

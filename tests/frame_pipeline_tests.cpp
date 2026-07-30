@@ -17,11 +17,28 @@ void require(bool condition, const char* message) {
 } // namespace
 
 int main() {
+    struct TickSnapshot {
+        int settings_value = 0;
+        uint64_t generation = 0;
+    };
+    const TickSnapshot captured{14, 7};
+    const uint64_t generation_after_reset = 8;
+    require(captured.settings_value == 14 && captured.generation == 7,
+            "settings snapshot remains associated with its captured generation");
+    require(!pipeline_generation_is_current(captured.generation, generation_after_reset),
+            "reset invalidates the complete settings-generation snapshot");
+
     PendingFrameMetadata pending;
-    require(submit_pending_frame(pending, 100, 1), "first frame is accepted");
-    require(submit_pending_frame(pending, 200, 1), "newer frame replaces pending work");
-    require(pending.timestamp_ns == 200 && pending.replacement_count == 1, "slot remains bounded to newest work");
-    require(!submit_pending_frame(pending, 150, 1), "older frame cannot replace newer work");
+    require(submit_pending_frame(pending, 100, 1, 1), "current tick can submit its first frame");
+    require(submit_pending_frame(pending, 200, 1, 1), "newer current-generation frame replaces pending work");
+    require(pending.timestamp_ns == 200 && pending.generation == 1 && pending.replacement_count == 1,
+            "pending work preserves the settings snapshot generation");
+    require(!submit_pending_frame(pending, 150, 1, 1), "older frame cannot replace newer same-generation work");
+    require(!submit_pending_frame(pending, 300, 1, 2), "stale tick cannot submit under the live generation");
+    require(submit_pending_frame(pending, 50, 2, 2), "new current tick replaces stale pending work");
+    require(pending.timestamp_ns == 50 && pending.generation == 2,
+            "replacement uses the generation belonging to the new settings snapshot");
+    require(!submit_pending_frame(pending, 400, 1, 2), "stale tick cannot replace newer current-generation work");
     invalidate_pending_frame(pending);
     require(!pending.available && pending.generation == 0, "reset invalidates pending work");
     require(pipeline_generation_is_current(4, 4), "current generation is accepted");
@@ -31,6 +48,28 @@ int main() {
     const uint64_t copied_generation = 4;
     require(!result_generation_is_consumable(copied_generation, 5),
             "a generation reset after result copy invalidates tracking consumption");
+    require(result_generation_disposition(4, 4, 4) == ResultGenerationDisposition::Consume,
+            "result generation N is consumed only by tick N");
+    require(result_generation_disposition(4, 5, 5) == ResultGenerationDisposition::DiscardStale,
+            "current tick discards an obsolete result");
+    require(result_generation_disposition(5, 4, 5) == ResultGenerationDisposition::LeaveAvailable,
+            "old tick neither consumes nor clears a newer result");
+    require(result_generation_disposition(4, 4, 5) == ResultGenerationDisposition::LeaveAvailable,
+            "stale tick abandons copied state after reset");
+
+    int processed_timestamp = 1;
+    int reacquisition_state = 2;
+    int runtime_state = 3;
+    int debug_state = 4;
+    require(!commit_if_generation_current(4, 5, [&] { processed_timestamp = 10; }),
+            "stale tick cannot update the processed detection timestamp");
+    require(!commit_if_generation_current(4, 5, [&] { reacquisition_state = 20; }),
+            "stale tick cannot update reacquisition state");
+    require(!commit_if_generation_current(4, 5, [&] { runtime_state = 30; }),
+            "stale tick cannot overwrite reset runtime state");
+    require(!commit_if_generation_current(4, 5, [&] { debug_state = 40; }), "stale tick cannot publish debug state");
+    require(processed_timestamp == 1 && reacquisition_state == 2 && runtime_state == 3 && debug_state == 4,
+            "reset-owned publication state remains unchanged after stale commit attempts");
 
     const ReacquisitionConfig config = public_reacquisition_config(150);
     ReacquisitionRuntime runtime;
@@ -63,18 +102,31 @@ int main() {
     require(scheduling.smoothed_detector_inference_ms == 0.0, "stale inference preserves the timing average");
     require(record_detector_completion_if_current(scheduling, 4, 4, 100.0), "current inference updates timing");
     require(scheduling.smoothed_detector_inference_ms == 100.0, "first inference initializes the EMA");
-    require(record_current_detector_completion(scheduling, 200.0), "second finite inference updates timing");
+    require(record_current_detector_completion(scheduling, 4, 200.0), "second finite inference updates timing");
     require(scheduling.smoothed_detector_inference_ms == 120.0, "EMA uses the stable alpha");
-    require(!record_current_detector_completion(scheduling, std::numeric_limits<double>::quiet_NaN()),
+    require(!record_current_detector_completion(scheduling, 4, std::numeric_limits<double>::quiet_NaN()),
             "non-finite inference is ignored");
-    require(!record_current_detector_completion(scheduling, -1.0), "negative inference is ignored");
+    require(!record_current_detector_completion(scheduling, 4, -1.0), "negative inference is ignored");
     require(scheduling.smoothed_detector_inference_ms == 120.0, "invalid timing preserves the EMA");
-    require(consume_detector_completions(scheduling) == 2, "all queued detector completions are consumed");
-    require(consume_detector_completions(scheduling) == 0, "completion events are not counted twice");
+    require(consume_detector_completions_if_current(scheduling, 3, 4) == 0,
+            "stale tick cannot consume current completions");
+    require(scheduling.pending_detector_completions == 2, "rejected stale consumption preserves current events");
+    require(consume_detector_completions_if_current(scheduling, 4, 4) == 2,
+            "tick consumes all completions belonging to its generation");
+    require(consume_detector_completions_if_current(scheduling, 4, 4) == 0, "completion events are not counted twice");
+    require(record_current_detector_completion(scheduling, 5, 120.0), "new generation records its completion");
+    require(consume_detector_completions_if_current(scheduling, 4, 5) == 0,
+            "old tick cannot consume new-generation completions");
+    require(scheduling.pending_detector_completions == 1 && scheduling.completion_generation == 5,
+            "new-generation completion remains available");
+    reset_detection_scheduling(scheduling, 150);
+    require(scheduling.pending_detector_completions == 0 && scheduling.completion_generation == 0,
+            "reset clears prior-generation completion state");
+    scheduling.completion_generation = 5;
     scheduling.pending_detector_completions = std::numeric_limits<uint32_t>::max() - 1;
-    require(record_current_detector_completion(scheduling, 120.0), "completion counter accepts a finite update");
-    require(record_current_detector_completion(scheduling, 120.0), "completion counter safely accepts saturation");
-    require(consume_detector_completions(scheduling) == std::numeric_limits<uint32_t>::max(),
+    require(record_current_detector_completion(scheduling, 5, 120.0), "completion counter accepts a finite update");
+    require(record_current_detector_completion(scheduling, 5, 120.0), "completion counter safely accepts saturation");
+    require(consume_detector_completions_if_current(scheduling, 5, 5) == std::numeric_limits<uint32_t>::max(),
             "completion counter saturates instead of wrapping");
 
     scheduling.reacquisition.state = ReacquisitionState::Reacquiring;

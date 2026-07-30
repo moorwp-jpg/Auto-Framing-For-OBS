@@ -14,10 +14,13 @@ effective interval. The configured interval remains the user's target. Uncertain
 states request a bounded burst interval, while the smoothed inference cost and safety multiplier establish a minimum
 effective interval that slow hardware can actually sustain.
 
-A settings or model reset increments `pipeline_generation`, invalidates pending work, and clears scheduling and result
-state through their normal mutexes. Completed detector inference—not a scheduling check—counts as a reacquisition
-attempt. Pending completions use a saturating counter, so multiple worker completions cannot collapse into one event.
-A bounded failure latches until the triggering condition clears, preventing rapid timeout/restart loops.
+A settings update assigns the new settings and increments `pipeline_generation` in the same `settings_mutex` critical
+section. Every tick captures those values as one immutable snapshot and never reloads a newer generation for older
+settings. Reset then invalidates pending work and clears scheduling and result state through their normal mutexes
+without incrementing the generation again. Completed detector inference—not a scheduling check—counts as a
+reacquisition attempt. Pending completions use a generation-scoped saturating counter, so multiple worker completions
+cannot collapse into one event or cross a reset. A bounded failure latches until the triggering condition clears,
+preventing rapid timeout/restart loops.
 
 ## Authority and recovery
 
@@ -38,14 +41,23 @@ published results, tracker state, runtime text, and debug data have separate syn
 tracking, crop calculation, logging, and property formatting occur without the scheduling lock.
 
 The worker's final generation check is inside `detection_result_mutex`, making validation atomic with result
-publication. Published results carry `latest_detection_generation`; tick and debug consumers verify that tag again.
-Tick copies the result generation and revalidates it while holding `tracking_mutex` immediately before applying the
-detections. A reset that wins that race invalidates the copied result; a tick that wins applies first and the later
-reset clears its tracking state.
-For a current completion the worker uses result → scheduling → runtime order. Reset increments the generation first,
-then takes result, scheduling, tracking, debug, and runtime locks sequentially rather than nesting them. It never takes
-the detector lock from a result or scheduling critical section. Therefore a worker either publishes before reset and
-the reset clears it, or observes the new generation while holding the result lock and discards it.
+publication. Published results must match the consuming tick's captured generation. An old tick that encounters a
+newer result leaves it available for the next tick. A copied result is revalidated while holding `tracking_mutex`
+immediately before tracker application.
+
+Major tick commit stages revalidate the captured generation: worker submission, tracker/crop state, processed
+detection time, completion consumption and reacquisition, runtime statistics, and debug overlay data. Tick-owned
+runtime fields are committed as one snapshot. Completion events are consumed only by a tick with the same generation.
+The tracker-lock-wins ordering permits a current tick already holding `tracking_mutex` to finish its local commit;
+reset has already advanced the generation and clears that state after it obtains the lock. If reset wins first, the
+old tick observes the new generation and abandons all remaining work. Runtime and debug publication use the same
+generation guard, so cleared state cannot be repopulated by an old tick.
+
+For a current completion the worker uses result → scheduling → runtime order. Reset increments the generation while
+holding `settings_mutex`, then takes result, scheduling, tracking, debug, and runtime locks sequentially rather than
+nesting them. It never takes the detector lock from a result or scheduling critical section. Therefore a worker either
+publishes before reset and the reset clears it, or observes the new generation while holding the result lock and
+discards it.
 
 ## Crop and failure behavior
 
