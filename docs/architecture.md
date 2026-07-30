@@ -16,7 +16,8 @@ effective interval that slow hardware can actually sustain.
 
 A settings or model reset increments `pipeline_generation`, invalidates pending work, and clears scheduling and result
 state through their normal mutexes. Completed detector inference—not a scheduling check—counts as a reacquisition
-attempt. A bounded failure latches until the triggering condition clears, preventing rapid timeout/restart loops.
+attempt. Pending completions use a saturating counter, so multiple worker completions cannot collapse into one event.
+A bounded failure latches until the triggering condition clears, preventing rapid timeout/restart loops.
 
 ## Authority and recovery
 
@@ -26,6 +27,9 @@ Lower-confidence candidates may continue compatible active tracks but cannot cre
 recovery requires spatial compatibility and is time-bounded. Occlusion hold is predicted, time-bounded, and does not
 change IDs. Live tracker, Subject Lock, detector-age, and completion snapshots feed the reacquisition state machine
 once per tick. Only a current detector result with a compatible high-confidence candidate is a stable confirmation.
+That confirmation starts the stable-recovery window. Neutral prediction ticks preserve the window, while a later
+detector completion without confirmation resets it. Detection staleness scales with the inference-budget-aware
+effective interval so slow, healthy inference does not continuously trigger reacquisition.
 
 ## Shared state
 
@@ -35,6 +39,9 @@ tracking, crop calculation, logging, and property formatting occur without the s
 
 The worker's final generation check is inside `detection_result_mutex`, making validation atomic with result
 publication. Published results carry `latest_detection_generation`; tick and debug consumers verify that tag again.
+Tick copies the result generation and revalidates it while holding `tracking_mutex` immediately before applying the
+detections. A reset that wins that race invalidates the copied result; a tick that wins applies first and the later
+reset clears its tracking state.
 For a current completion the worker uses result → scheduling → runtime order. Reset increments the generation first,
 then takes result, scheduling, tracking, debug, and runtime locks sequentially rather than nesting them. It never takes
 the detector lock from a result or scheduling critical section. Therefore a worker either publishes before reset and

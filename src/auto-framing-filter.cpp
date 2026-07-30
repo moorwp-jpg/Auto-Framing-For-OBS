@@ -470,10 +470,6 @@ struct RuntimeStatusText {
     std::string crop;
 };
 
-double stale_detection_age_threshold_ms(uint32_t detection_interval_ms) {
-    return std::max(500.0, static_cast<double>(detection_interval_ms) * 2.0);
-}
-
 std::string format_performance_guidance(const RuntimeInfo& runtime) {
     const double slow_inference_threshold_ms =
         std::max(200.0, static_cast<double>(runtime.detection_interval_ms) * 1.25);
@@ -488,7 +484,8 @@ std::string format_performance_guidance(const RuntimeInfo& runtime) {
     }
 
     if (runtime.last_detection_timestamp_ns != 0 &&
-        runtime.detection_age_ms > stale_detection_age_threshold_ms(runtime.detection_interval_ms)) {
+        runtime.detection_age_ms >
+            stale_detection_age_threshold_ms(runtime.detection_interval_ms, runtime.effective_detection_interval_ms)) {
         return "Performance: detector results are stale; tracker prediction is carrying the crop between detections.";
     }
 
@@ -1822,15 +1819,17 @@ void auto_framing_video_tick(void* data, float seconds) {
 
     std::vector<Detection> detections_to_track;
     uint64_t detection_timestamp_ns = 0;
+    uint64_t detection_generation = 0;
     bool has_detection_update = false;
-    const uint64_t current_generation = filter->pipeline_generation.load(std::memory_order_acquire);
 
     {
         std::lock_guard<std::mutex> result_lock(filter->detection_result_mutex);
         if (filter->latest_detection_available) {
-            if (result_generation_is_consumable(filter->latest_detection_generation, current_generation)) {
+            if (result_generation_is_consumable(filter->latest_detection_generation,
+                                                filter->pipeline_generation.load(std::memory_order_acquire))) {
                 detections_to_track = filter->latest_detections;
                 detection_timestamp_ns = filter->latest_detection_timestamp_ns;
+                detection_generation = filter->latest_detection_generation;
                 has_detection_update = true;
             } else {
                 filter->latest_detections.clear();
@@ -1883,28 +1882,6 @@ void auto_framing_video_tick(void* data, float seconds) {
         }
     }
 
-    uint64_t last_detection_timestamp_ns = 0;
-    {
-        std::lock_guard<std::mutex> scheduling_lock(filter->detection_scheduling_mutex);
-        if (has_detection_update) {
-            filter->detection_scheduling.last_processed_detection_timestamp_ns =
-                detection_timestamp_ns != 0 ? detection_timestamp_ns : now;
-        }
-        last_detection_timestamp_ns = filter->detection_scheduling.last_processed_detection_timestamp_ns;
-    }
-
-    double detection_age_ms = 0.0;
-    if (last_detection_timestamp_ns != 0 && now > last_detection_timestamp_ns) {
-        detection_age_ms = static_cast<double>(now - last_detection_timestamp_ns) / 1000000.0;
-    }
-    TrackerRuntimeState tracker_runtime_state = TrackerRuntimeState::Predicting;
-    if (has_detection_update) {
-        tracker_runtime_state = TrackerRuntimeState::Detecting;
-    } else if (last_detection_timestamp_ns != 0 &&
-               detection_age_ms > stale_detection_age_threshold_ms(settings.detection_interval_ms)) {
-        tracker_runtime_state = TrackerRuntimeState::PredictionGuarded;
-    }
-
     Rect crop;
     Rect target_crop;
     std::vector<PersonTrack> active_tracks;
@@ -1915,6 +1892,17 @@ void auto_framing_video_tick(void* data, float seconds) {
 
     {
         std::lock_guard<std::mutex> tracking_lock(filter->tracking_mutex);
+        // Reset also clears tracker state under this mutex. Revalidate the copied result here so either this tick
+        // applies first and reset clears it afterward, or reset wins and this tick discards the stale generation.
+        if (has_detection_update &&
+            !result_generation_is_consumable(detection_generation,
+                                             filter->pipeline_generation.load(std::memory_order_acquire))) {
+            detections_to_track.clear();
+            detection_timestamp_ns = 0;
+            detection_generation = 0;
+            has_detection_update = false;
+        }
+
         const TrackerUpdateOptions tracker_options = tracker_options_for_subject_lock(settings, filter->subject_lock);
 
         if (has_detection_update) {
@@ -1947,8 +1935,32 @@ void auto_framing_video_tick(void* data, float seconds) {
         filter->crop_height.store(crop.height, std::memory_order_relaxed);
     }
 
-    const bool stale_detection = last_detection_timestamp_ns != 0 &&
-                                 detection_age_ms > stale_detection_age_threshold_ms(settings.detection_interval_ms);
+    uint64_t last_detection_timestamp_ns = 0;
+    {
+        std::lock_guard<std::mutex> scheduling_lock(filter->detection_scheduling_mutex);
+        if (has_detection_update &&
+            result_generation_is_consumable(detection_generation,
+                                            filter->pipeline_generation.load(std::memory_order_acquire))) {
+            filter->detection_scheduling.last_processed_detection_timestamp_ns =
+                detection_timestamp_ns != 0 ? detection_timestamp_ns : now;
+        }
+        last_detection_timestamp_ns = filter->detection_scheduling.last_processed_detection_timestamp_ns;
+    }
+
+    double detection_age_ms = 0.0;
+    if (last_detection_timestamp_ns != 0 && now > last_detection_timestamp_ns) {
+        detection_age_ms = static_cast<double>(now - last_detection_timestamp_ns) / 1000000.0;
+    }
+    const double stale_detection_threshold_ms =
+        stale_detection_age_threshold_ms(settings.detection_interval_ms, scheduling_snapshot.effective_interval_ms);
+    TrackerRuntimeState tracker_runtime_state = TrackerRuntimeState::Predicting;
+    if (has_detection_update) {
+        tracker_runtime_state = TrackerRuntimeState::Detecting;
+    } else if (last_detection_timestamp_ns != 0 && detection_age_ms > stale_detection_threshold_ms) {
+        tracker_runtime_state = TrackerRuntimeState::PredictionGuarded;
+    }
+
+    const bool stale_detection = last_detection_timestamp_ns != 0 && detection_age_ms > stale_detection_threshold_ms;
     const float confirmation_threshold = settings.tracking_algorithm == TrackingAlgorithm::ByteTrack
                                              ? bytetrack_config_from_settings(settings).track_high_thresh
                                              : static_cast<float>(settings.detection_confidence);
@@ -1973,8 +1985,8 @@ void auto_framing_video_tick(void* data, float seconds) {
         input.recently_lost_recovery = tracker_diagnostics.recently_lost_recovery_attempts > 0 ||
                                        tracker_diagnostics.recently_lost_recovery_successes > 0;
         input.high_confidence_confirmation = high_confidence_confirmation;
-        // Attempt accounting consumes a current-generation detector completion exactly once.
-        input.detection_attempted = consume_detector_completion(filter->detection_scheduling);
+        // Attempt accounting consumes every current-generation detector completion exactly once.
+        input.detector_completions = consume_detector_completions(filter->detection_scheduling);
         update_reacquisition(filter->detection_scheduling.reacquisition,
                              public_reacquisition_config(settings.detection_interval_ms), input);
         update_effective_detection_interval(filter->detection_scheduling, settings.detection_interval_ms);
@@ -1999,8 +2011,7 @@ void auto_framing_video_tick(void* data, float seconds) {
         blog(LOG_DEBUG,
              "[obs-auto-framing] detection age %.0f ms exceeds %.0f ms; tracker=%s model=%s interval=%u ms "
              "active=%zu lost=%zu",
-             detection_age_ms, stale_detection_age_threshold_ms(settings.detection_interval_ms),
-             tracker_runtime_state_display(tracker_runtime_state),
+             detection_age_ms, stale_detection_threshold_ms, tracker_runtime_state_display(tracker_runtime_state),
              detector_model_quality_display(settings.detector_model_quality), settings.detection_interval_ms,
              active_tracks.size(), lost_track_count);
     }

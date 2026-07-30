@@ -4,6 +4,7 @@
 
 #include <cmath>
 #include <cstdint>
+#include <limits>
 
 namespace autoframing {
 
@@ -46,7 +47,7 @@ struct DetectionSchedulingState {
     ReacquisitionRuntime reacquisition;
     uint32_t effective_interval_ms = 150;
     bool interval_budget_limited = false;
-    bool detector_completion_pending = false;
+    uint32_t pending_detector_completions = 0;
 };
 
 inline void reset_detection_scheduling(DetectionSchedulingState& state, uint32_t configured_interval_ms) {
@@ -66,7 +67,9 @@ inline bool record_current_detector_completion(DetectionSchedulingState& state, 
     } else {
         state.smoothed_detector_inference_ms += alpha * (inference_ms - state.smoothed_detector_inference_ms);
     }
-    state.detector_completion_pending = true;
+    if (state.pending_detector_completions < std::numeric_limits<uint32_t>::max()) {
+        ++state.pending_detector_completions;
+    }
     return true;
 }
 
@@ -77,10 +80,10 @@ inline bool record_detector_completion_if_current(DetectionSchedulingState& stat
            record_current_detector_completion(state, inference_ms, alpha);
 }
 
-inline bool consume_detector_completion(DetectionSchedulingState& state) {
-    const bool completed = state.detector_completion_pending;
-    state.detector_completion_pending = false;
-    return completed;
+inline uint32_t consume_detector_completions(DetectionSchedulingState& state) {
+    const uint32_t completions = state.pending_detector_completions;
+    state.pending_detector_completions = 0;
+    return completions;
 }
 
 inline uint32_t update_effective_detection_interval(DetectionSchedulingState& state, uint32_t configured_interval_ms) {
@@ -94,6 +97,11 @@ inline bool detection_submission_due(const DetectionSchedulingState& state, uint
     if (state.last_submit_ns == 0 || now_ns < state.last_submit_ns)
         return true;
     return now_ns - state.last_submit_ns >= static_cast<uint64_t>(state.effective_interval_ms) * 1000000ULL;
+}
+
+inline double stale_detection_age_threshold_ms(uint32_t configured_interval_ms, uint32_t effective_interval_ms) {
+    const uint32_t expected_interval_ms = std::max(configured_interval_ms, effective_interval_ms);
+    return std::max(500.0, static_cast<double>(expected_interval_ms) * 2.0);
 }
 
 inline bool result_generation_is_consumable(uint64_t result_generation, uint64_t current_generation) {

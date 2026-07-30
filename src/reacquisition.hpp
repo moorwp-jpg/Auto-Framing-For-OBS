@@ -46,7 +46,7 @@ struct ReacquisitionInput {
     bool stale_detection = false;
     bool recently_lost_recovery = false;
     bool high_confidence_confirmation = false;
-    bool detection_attempted = false;
+    uint32_t detector_completions = 0;
 };
 
 struct ReacquisitionRuntime {
@@ -92,9 +92,9 @@ inline uint64_t elapsed_ms(uint64_t start_ns, uint64_t now_ns) {
 
 inline void update_reacquisition(ReacquisitionRuntime& runtime, const ReacquisitionConfig& config,
                                  const ReacquisitionInput& input) {
-    if (input.detection_attempted && runtime.state != ReacquisitionState::Stable &&
-        runtime.attempts < std::numeric_limits<uint32_t>::max()) {
-        ++runtime.attempts;
+    if (input.detector_completions > 0 && runtime.state != ReacquisitionState::Stable) {
+        const uint32_t available_attempts = std::numeric_limits<uint32_t>::max() - runtime.attempts;
+        runtime.attempts += std::min(available_attempts, input.detector_completions);
     }
 
     const bool requested = reacquisition_requested(input);
@@ -143,11 +143,11 @@ inline void update_reacquisition(ReacquisitionRuntime& runtime, const Reacquisit
     if (runtime.state == ReacquisitionState::Stable)
         return;
 
-    if (!input.high_confidence_confirmation) {
+    if (!input.high_confidence_confirmation && input.detector_completions > 0) {
         runtime.stable_since_ns = 0;
         return;
     }
-    if (runtime.stable_since_ns == 0)
+    if (input.high_confidence_confirmation && runtime.stable_since_ns == 0)
         runtime.stable_since_ns = input.now_ns;
     if (elapsed_ms(runtime.stable_since_ns, input.now_ns) >= config.stable_recovery_ms) {
         ++runtime.successes;
