@@ -18,8 +18,8 @@
     }
   },
   "name": "obs-auto-framing",
-  "displayName": "OBS Auto Framing",
+  "displayName": "Auto Framing For OBS",
   "version": "0.2.0",
   "releaseChannel": "Preview",
-  "author": "OBS Auto Framing contributors"
+  "author": "Auto Framing For OBS contributors"
 }

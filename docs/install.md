@@ -1,6 +1,6 @@
-# Install OBS Auto Framing
+# Install Auto Framing For OBS
 
-OBS Auto Framing v0.2.0 Preview is available as a Windows installer and a portable/manual ZIP. Both contain only the
+Auto Framing For OBS v0.2.0 Preview is available as a Windows installer and a portable/manual ZIP. Both contain only the
 public YOLOX-Tiny package and use ONNX Runtime CPU by default.
 
 ## Recommended Windows installer
@@ -85,7 +85,7 @@ Recommended first settings:
 
 ## Uninstall
 
-Installer users can remove OBS Auto Framing through Windows Installed Apps or the generated uninstaller under:
+Installer users can remove Auto Framing For OBS through Windows Installed Apps or the generated uninstaller under:
 
 ```text
 <ObsRoot>\data\obs-plugins\obs-auto-framing\installer
@@ -98,7 +98,7 @@ path and compiled installed hash agree, its current hash is unchanged, and its r
 
 If any manifest metadata or record is missing, malformed, swapped, duplicated, or changed, the uninstaller logs the
 validation reason and preserves every payload file. It also preserves modified files and all pre-existing files,
-including a pre-existing or subsequently changed shared ONNX Runtime. Empty OBS Auto Framing-owned directories are
+including a pre-existing or subsequently changed shared ONNX Runtime. Empty Auto Framing For OBS-owned directories are
 removed only after valid cleanup; generic OBS directories are never recursively deleted.
 
 ZIP installations require manual removal. Close OBS, remove
