@@ -44,13 +44,25 @@ The ZIP also contains `README.md`, `LICENSE`, `SECURITY.md`, `docs\install.md`, 
 
 ## Upgrade behavior
 
-The installer uses one stable AppId across public versions. Installing v0.2.0 over the v0.1.1 public layout replaces
-only OBS Auto Framing-owned files. OBS scenes, profiles, source settings, and plugin configuration are not removed.
+The installer uses one stable AppId across public versions and remembers the selected OBS root. Repair or upgrade
+defaults to that same standard, custom, or portable root and validates it again before writing. Silent repair fails
+if a remembered root is no longer valid unless `/DIR=<valid OBS root>` is supplied.
+
+Installing v0.2.0 over the exact published v0.1.1 manual ZIP layout recognizes the verified v0.1.1 hashes for the
+plugin DLL, effect, locale, YOLOX-Tiny model, and shared runtime. The v0.2.0 replacements for the four non-shared
+plugin files become installer-owned and are removable on uninstall. OBS scenes, profiles, source settings, and
+plugin configuration are not removed.
 
 `obs-plugins\64bit\onnxruntime.dll` is treated as shared. An identical pre-existing runtime is reused. The installer
 also recognizes the exact runtime published in the v0.1.1 public ZIP and replaces it as the documented compatibility
 decision for that supported upgrade. Any other differing runtime stops installation with a compatibility message
-instead of being silently replaced.
+instead of being silently replaced. A recognized v0.1.1 or otherwise pre-existing runtime remains classified as
+shared/pre-existing and is preserved on uninstall. A runtime first created by this installer is removable only while
+its hash still matches the compiled installed hash.
+
+Every expected destination is classified before any payload write. An existing non-shared file that is neither
+proven by a complete valid installer manifest nor an exact recognized public package file is rejected as unknown or
+locally modified. The installer does not overwrite or back up that file; it leaves the entire payload unchanged.
 
 ## Default model policy
 
@@ -71,10 +83,15 @@ Installer users can remove OBS Auto Framing through Windows Installed Apps or th
 <ObsRoot>\data\obs-plugins\obs-auto-framing\installer
 ```
 
-Close OBS first. The uninstaller reads its ownership manifest and removes only listed files whose current SHA-256
-still matches the installed hash and that the manifest proves were created by this installer. It preserves modified
-files and every file that existed before installation, including a pre-existing or subsequently changed shared ONNX
-Runtime. Empty OBS Auto Framing-owned directories are removed; generic OBS directories are never recursively deleted.
+Close OBS first. Uninstall candidates come only from the 11-file payload descriptor compiled into the installer.
+Manifest paths, IDs, file counts, hashes, and shared/removal classifications are checked against that descriptor and
+never select deletion targets. A file is removed only when the complete manifest is valid, its fixed allowlisted
+path and compiled installed hash agree, its current hash is unchanged, and its recorded provenance permits removal.
+
+If any manifest metadata or record is missing, malformed, swapped, duplicated, or changed, the uninstaller logs the
+validation reason and preserves every payload file. It also preserves modified files and all pre-existing files,
+including a pre-existing or subsequently changed shared ONNX Runtime. Empty OBS Auto Framing-owned directories are
+removed only after valid cleanup; generic OBS directories are never recursively deleted.
 
 ZIP installations require manual removal. Close OBS, remove
 `obs-plugins\64bit\obs-auto-framing.dll` and `data\obs-plugins\obs-auto-framing`, and remove

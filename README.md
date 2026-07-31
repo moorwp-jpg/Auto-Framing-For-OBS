@@ -29,7 +29,8 @@ This is a preview release. When filing bugs, please include OBS version, Windows
 Portable/manual: download `obs-auto-framing-v0.2.0-windows-x64.zip` and extract it into the same OBS root.
 The installer supports standard, custom, portable, and prepared OBS runtime roots. Administrator permission may be
 required for Program Files. The installer is currently unsigned, so Windows SmartScreen may warn about a new
-application.
+application. Repair reuses the previously selected OBS root. Unknown or modified files at installer destinations are
+rejected before any payload is written, and an invalid ownership manifest makes uninstall preserve all payload files.
 
 The installer and default ZIP include `obs-auto-framing.dll`, `onnxruntime.dll`, `crop.effect`, `en-US.ini`, and only
 `yolox_tiny.onnx`, so the default ONNX Runtime CPU settings work without a custom model path. See
@@ -140,9 +141,11 @@ Release zips are generated artifacts. They stay ignored by git and are attached 
 .\scripts\publish_release.ps1
 ```
 
-The default dry run validates the ZIP, installer, both checksums, release notes, GitHub CLI install, and GitHub
-authentication, then prints the `gh release create` command. Use `-NoAuthCheck` only for an offline dry run. After the
-installer PR is merged, rebuild and test exact artifacts from `main`, then create a draft prerelease for inspection:
+The default dry run validates the ZIP, installer, both checksums, release notes, and GitHub CLI authentication, then
+prints the `gh release create` command with the exact `main` SHA in `--target` and the public repository in `--repo`.
+Use `-NoAuthCheck` only for a non-publishing dry run. A publishing run fetches `origin main --tags` and verifies the
+direct remote `main` SHA. After the installer PR is merged, rebuild and test exact artifacts from `main`, then create
+a draft prerelease for inspection:
 
 ```powershell
 .\scripts\publish_release.ps1 -Publish -Draft

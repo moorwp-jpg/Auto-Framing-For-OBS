@@ -13,6 +13,7 @@ Use this checklist first on the release-preparation PR, then repeat it against a
 - [ ] Confirm the compiled plugin reports `0.2.0 Preview`.
 - [ ] Run `scripts\test_package_policy.ps1`.
 - [ ] Run `scripts\test_installer_policy.ps1`.
+- [ ] Run `scripts\test_publish_release_policy.ps1`.
 
 ## Package and installer
 
@@ -30,6 +31,10 @@ Use this checklist first on the release-preparation PR, then repeat it against a
 - [ ] Reject install while `obs64.exe` is running.
 - [ ] Reinstall/repair v0.2.0 without duplicate or nested paths.
 - [ ] Upgrade the v0.1.1 public manual layout while preserving OBS configuration.
+- [ ] Uninstall that upgrade and confirm the plugin DLL, effect, locale, Tiny model, and installer docs are gone.
+- [ ] Reject unknown or modified plugin, effect, and model files before any payload write.
+- [ ] Tamper the manifest path to `bin\64bit\obs64.exe`; confirm uninstall preserves every payload and OBS file.
+- [ ] Repair a custom path containing spaces without `/DIR`; confirm the remembered root and ownership are retained.
 - [ ] Confirm a different pre-existing ONNX Runtime is not silently replaced.
 - [ ] Uninstall only hash-proven plugin-owned files.
 - [ ] Preserve pre-existing and modified shared ONNX Runtime files.
@@ -40,9 +45,11 @@ Use this checklist first on the release-preparation PR, then repeat it against a
 ## Release dry run and post-merge publication
 
 - [ ] Review `docs\release_notes\v0.2.0.md`.
-- [ ] Run `scripts\publish_release.ps1 -NoAuthCheck` and confirm all four assets appear.
+- [ ] Confirm all workflow `uses:` entries remain full-SHA pinned and use Node.js 24-compatible actions.
+- [ ] Run `scripts\publish_release.ps1 -NoAuthCheck` and confirm all four assets, exact `--target`, and exact `--repo` appear.
 - [ ] Merge only after PR review; do not merge automatically.
 - [ ] Rebuild and retest exact final artifacts from merged `main`.
+- [ ] Confirm publishing fetches `origin main --tags` and direct remote `main` equals the validated local `HEAD`.
 - [ ] Run `scripts\publish_release.ps1 -Publish -Draft`.
 - [ ] Inspect tag `v0.2.0`, title `OBS Auto Framing v0.2.0 Preview`, prerelease status, notes, sizes, and all hashes.
 - [ ] Publish the draft only after final maintainer review.

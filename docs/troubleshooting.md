@@ -202,8 +202,13 @@ The pending-frame slot remains bounded, so slower inference reduces update frequ
 - Select the OBS root containing `bin\64bit\obs64.exe`, not `bin\64bit` itself.
 - If a different `obs-plugins\64bit\onnxruntime.dll` exists, the installer stops instead of replacing a potentially
   shared runtime. Use a separate OBS root or review compatibility before manual installation.
+- If an expected plugin DLL, effect, locale, or model is unknown or locally modified, setup names that relative path
+  and rejects the transaction before writing any payload. This release does not back up or overwrite unknown files.
+- Repair reuses the previously selected OBS root. If that root moved or no longer contains
+  `bin\64bit\obs64.exe`, browse to a valid root interactively or pass `/DIR=<valid root>` in silent mode.
 - The v0.2.0 installer is unsigned. Windows SmartScreen may warn; verify the `.sha256` file from the GitHub Release.
 
-The uninstaller logs and preserves files whose hash changed after installation, plus files that existed before
-installation—including a pre-existing shared ONNX Runtime. Installer users can uninstall through Windows Installed
-Apps; manual ZIP users must remove the plugin files manually.
+The uninstaller considers only its compiled 11-file allowlist. It logs and preserves files whose hash changed after
+installation, plus files that existed before installation—including a pre-existing shared ONNX Runtime. If any
+ownership-manifest field is invalid, all payload files are preserved instead of attempting partial cleanup.
+Installer users can uninstall through Windows Installed Apps; manual ZIP users must remove plugin files manually.

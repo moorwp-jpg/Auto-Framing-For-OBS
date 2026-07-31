@@ -60,6 +60,9 @@ jobs:
       - name: Test public installer staging and ownership policy
         shell: pwsh
         run: ./scripts/test_installer_policy.ps1
+      - name: Test release publisher safety policy
+        shell: pwsh
+        run: ./scripts/test_publish_release_policy.ps1
 
   linux-core:
     name: Core Build & Tests (Linux, advisory)
