@@ -12,16 +12,19 @@ param(
     [string]$Title,
     [string]$OutputDir = "out/release",
     [string]$NotesPath,
+    [string]$TargetSha,
     [switch]$Publish,
     [switch]$Draft,
     [switch]$NoAuthCheck
 )
 
 $ErrorActionPreference = "Stop"
+. (Join-Path $PSScriptRoot "release_policy.ps1")
+
+$releaseRepository = "moorwp-jpg/Auto-Framing-For-OBS"
 
 function ConvertTo-ProjectPath {
     param([Parameter(Mandatory = $true)][string]$Path)
-
     if ([System.IO.Path]::IsPathRooted($Path)) {
         return [System.IO.Path]::GetFullPath($Path)
     }
@@ -33,7 +36,6 @@ function Resolve-RequiredFile {
         [Parameter(Mandatory = $true)][string]$Path,
         [Parameter(Mandatory = $true)][string]$Description
     )
-
     if (-not (Test-Path -LiteralPath $Path -PathType Leaf)) {
         throw "$Description not found: $Path"
     }
@@ -45,41 +47,20 @@ function Assert-AssetChecksum {
         [Parameter(Mandatory = $true)][string]$ArtifactPath,
         [Parameter(Mandatory = $true)][string]$ChecksumPath
     )
-
     $checksumText = (Get-Content -Raw -LiteralPath $ChecksumPath).Trim()
     $artifactName = [System.IO.Path]::GetFileName($ArtifactPath)
-    if ($checksumText -notmatch '^([0-9a-fA-F]{64}) \*(.+)$') {
-        throw "Invalid SHA-256 checksum format: $ChecksumPath"
+    if ($checksumText -notmatch '^([0-9a-fA-F]{64}) \*(.+)$' -or
+        $Matches[2] -cne $artifactName) {
+        throw "Invalid SHA-256 checksum file: $ChecksumPath"
     }
-    if ($Matches[2] -cne $artifactName) {
-        throw "Checksum file names '$($Matches[2])', expected '$artifactName'."
-    }
-    $actual = (Get-FileHash -Algorithm SHA256 -LiteralPath $ArtifactPath).Hash
-    if ($actual -ine $Matches[1]) {
+    if ((Get-FileHash -Algorithm SHA256 -LiteralPath $ArtifactPath).Hash -ine $Matches[1]) {
         throw "SHA-256 mismatch for $artifactName."
     }
 }
 
-function Quote-Argument {
-    param([Parameter(Mandatory = $true)][string]$Argument)
-
-    if ($Argument -match '^[A-Za-z0-9_./:=+\\-]+$') {
-        return $Argument
-    }
-    return '"' + ($Argument -replace '"', '\"') + '"'
-}
-
-function Format-CommandLine {
-    param([Parameter(Mandatory = $true)][string[]]$Arguments)
-
-    return ($Arguments | ForEach-Object { Quote-Argument -Argument $_ }) -join " "
-}
-
 function Resolve-GitHubCli {
     $command = Get-Command gh -ErrorAction SilentlyContinue
-    if ($null -ne $command) {
-        return $command.Source
-    }
+    if ($null -ne $command) { return $command.Source }
     foreach ($candidate in @(
         "C:\Program Files\GitHub CLI\gh.exe",
         "C:\Program Files (x86)\GitHub CLI\gh.exe",
@@ -95,7 +76,6 @@ function Resolve-GitHubCli {
 
 function Invoke-GitText {
     param([Parameter(Mandatory = $true)][string[]]$Arguments)
-
     $output = & git @Arguments 2>&1
     if ($LASTEXITCODE -ne 0) {
         throw "git $($Arguments -join ' ') failed: $($output | Out-String)"
@@ -104,21 +84,19 @@ function Invoke-GitText {
 }
 
 $script:ProjectRoot = (Resolve-Path -LiteralPath (Join-Path $PSScriptRoot "..")).Path
-$buildspec = Get-Content -Raw -LiteralPath (Join-Path $ProjectRoot "buildspec.json") | ConvertFrom-Json
+$buildspec = Get-Content -Raw -LiteralPath (
+    Join-Path $ProjectRoot "buildspec.json") | ConvertFrom-Json
 $pluginName = [string]$buildspec.name
 $displayName = [string]$buildspec.displayName
 $version = [string]$buildspec.version
 $releaseChannel = [string]$buildspec.releaseChannel
-
 if ([string]::IsNullOrWhiteSpace($pluginName) -or
     [string]::IsNullOrWhiteSpace($displayName) -or
     [string]::IsNullOrWhiteSpace($version) -or
     [string]::IsNullOrWhiteSpace($releaseChannel)) {
     throw "buildspec.json is missing required release metadata."
 }
-if ([string]::IsNullOrWhiteSpace($Tag)) {
-    $Tag = "v$version"
-}
+if ([string]::IsNullOrWhiteSpace($Tag)) { $Tag = "v$version" }
 if ($Tag -cne "v$version") {
     throw "Release tag '$Tag' does not match buildspec version '$version'."
 }
@@ -131,37 +109,31 @@ if ([string]::IsNullOrWhiteSpace($NotesPath)) {
 if ($Publish -and $NoAuthCheck) {
     throw "-NoAuthCheck is permitted only for a dry run."
 }
+if ($Publish -and -not [string]::IsNullOrWhiteSpace($TargetSha)) {
+    throw "-TargetSha is permitted only for dry runs; publishing derives it from verified main."
+}
 if ($releaseChannel -ine "Preview") {
-    throw "This publisher is configured for a Preview prerelease, found channel '$releaseChannel'."
+    throw "This publisher is configured for a Preview prerelease, found '$releaseChannel'."
 }
 
 $outputPath = ConvertTo-ProjectPath -Path $OutputDir
 $baseName = "$pluginName-$Tag-windows-x64"
-$zipPath = Resolve-RequiredFile -Path (Join-Path $outputPath "$baseName.zip") -Description "Release ZIP"
-$zipChecksumPath = Resolve-RequiredFile -Path "$zipPath.sha256" -Description "Release ZIP checksum"
-$installerPath = Resolve-RequiredFile -Path (Join-Path $outputPath "$baseName-installer.exe") -Description "Release installer"
-$installerChecksumPath = Resolve-RequiredFile -Path "$installerPath.sha256" -Description "Release installer checksum"
-$notesPathResolved = Resolve-RequiredFile -Path (ConvertTo-ProjectPath -Path $NotesPath) -Description "Release notes"
-
-Assert-AssetChecksum -ArtifactPath $zipPath -ChecksumPath $zipChecksumPath
-Assert-AssetChecksum -ArtifactPath $installerPath -ChecksumPath $installerChecksumPath
-
+$zipPath = Resolve-RequiredFile (Join-Path $outputPath "$baseName.zip") "Release ZIP"
+$zipChecksumPath = Resolve-RequiredFile "$zipPath.sha256" "Release ZIP checksum"
+$installerPath = Resolve-RequiredFile (Join-Path $outputPath "$baseName-installer.exe") `
+    "Release installer"
+$installerChecksumPath = Resolve-RequiredFile "$installerPath.sha256" `
+    "Release installer checksum"
+$notesPathResolved = Resolve-RequiredFile (ConvertTo-ProjectPath $NotesPath) "Release notes"
+Assert-AssetChecksum $zipPath $zipChecksumPath
+Assert-AssetChecksum $installerPath $installerChecksumPath
 $assets = @($installerPath, $installerChecksumPath, $zipPath, $zipChecksumPath)
-$releaseArguments = @("release", "create", $Tag) + $assets + @(
-    "--title", $Title,
-    "--notes-file", $notesPathResolved,
-    "--prerelease"
-)
-if ($Draft) {
-    $releaseArguments += "--draft"
-}
-$commandPreview = "gh " + (Format-CommandLine -Arguments $releaseArguments)
 
 $ghPath = $null
 if (-not $NoAuthCheck) {
     $ghPath = Resolve-GitHubCli
     if ([string]::IsNullOrWhiteSpace($ghPath)) {
-        throw "GitHub CLI 'gh' was not found. Install it from https://cli.github.com/ and run 'gh auth login'."
+        throw "GitHub CLI 'gh' was not found. Install it and run 'gh auth login'."
     }
     & $ghPath auth status *> $null
     if ($LASTEXITCODE -ne 0) {
@@ -169,54 +141,64 @@ if (-not $NoAuthCheck) {
     }
 }
 
+if ($Publish) {
+    $fetchOutput = & git fetch --prune origin main --tags 2>&1
+    if ($LASTEXITCODE -ne 0) {
+        throw "git fetch --prune origin main --tags failed: $($fetchOutput | Out-String)"
+    }
+    $branch = Invoke-GitText @("branch", "--show-current")
+    $status = Invoke-GitText @("status", "--porcelain")
+    $headSha = Invoke-GitText @("rev-parse", "HEAD")
+    $localMain = Invoke-GitText @("rev-parse", "main")
+    $trackingMain = Invoke-GitText @("rev-parse", "origin/main")
+    $remoteOutput = Invoke-GitText @("ls-remote", "origin", "refs/heads/main")
+    $remoteMain = ConvertFrom-LsRemoteMain $remoteOutput
+    $targetSha = Assert-ReleaseMainIdentity -Branch $branch `
+        -WorkingTreeStatus $status -HeadSha $headSha -LocalMainSha $localMain `
+        -TrackingMainSha $trackingMain -RemoteMainSha $remoteMain
+}
+else {
+    if ([string]::IsNullOrWhiteSpace($TargetSha)) {
+        $targetSha = Invoke-GitText @("rev-parse", "main")
+    }
+    elseif ($TargetSha -notmatch '^[0-9a-fA-F]{40}$') {
+        throw "-TargetSha must be a full 40-character commit SHA."
+    }
+    else {
+        $targetSha = $TargetSha.ToLowerInvariant()
+    }
+}
+
+$releaseArguments = New-ReleaseCreateArguments -Repository $releaseRepository `
+    -Tag $Tag -Title $Title -NotesPath $notesPathResolved -Assets $assets `
+    -TargetSha $targetSha -Draft:$Draft
+$commandPreview = "gh " + (Format-ReleaseCommandLine $releaseArguments)
+
 if (-not $Publish) {
     Write-Host "Dry run only. No tag or GitHub release was created."
-    if ($NoAuthCheck) {
-        Write-Host "GitHub CLI authentication was skipped for this dry run."
-    }
+    if ($NoAuthCheck) { Write-Host "GitHub CLI authentication was skipped for this dry run." }
     Write-Host "Validated release assets:"
-    foreach ($asset in $assets) {
-        Write-Host "  $asset"
-    }
-    Write-Host "Release notes:"
-    Write-Host "  $notesPathResolved"
+    $assets | ForEach-Object { Write-Host "  $_" }
+    Write-Host "Release target:"
+    Write-Host "  $targetSha"
     Write-Host "Command that would be run:"
     Write-Host "  $commandPreview"
     exit 0
 }
 
-$branch = Invoke-GitText -Arguments @("branch", "--show-current")
-if ($branch -cne "main") {
-    throw "Publishing is allowed only from main; current branch is '$branch'."
-}
-$status = Invoke-GitText -Arguments @("status", "--porcelain")
-if (-not [string]::IsNullOrWhiteSpace($status)) {
-    throw "Publishing requires a clean working tree."
-}
-$localMain = Invoke-GitText -Arguments @("rev-parse", "main")
-$originMain = Invoke-GitText -Arguments @("rev-parse", "origin/main")
-if ($localMain -cne $originMain) {
-    throw "Local main ($localMain) does not match origin/main ($originMain). Pull the merged public main first."
-}
-
 & git show-ref --verify --quiet "refs/tags/$Tag"
-if ($LASTEXITCODE -eq 0) {
-    throw "Tag already exists locally: $Tag"
-}
+$localTagExists = $LASTEXITCODE -eq 0
 $remoteTag = & git ls-remote --tags origin "refs/tags/$Tag" 2>&1
 if ($LASTEXITCODE -ne 0) {
     throw "Could not verify the remote tag state: $($remoteTag | Out-String)"
 }
-if (-not [string]::IsNullOrWhiteSpace(($remoteTag | Out-String).Trim())) {
-    throw "Tag already exists on origin: $Tag"
-}
+& $ghPath release view $Tag --repo $releaseRepository *> $null
+$releaseExists = $LASTEXITCODE -eq 0
+Assert-ReleaseAvailability -LocalTagExists $localTagExists `
+    -RemoteTagOutput (($remoteTag | Out-String).Trim()) `
+    -ReleaseExists $releaseExists -Tag $Tag
 
-& $ghPath release view $Tag *> $null
-if ($LASTEXITCODE -eq 0) {
-    throw "GitHub release already exists: $Tag"
-}
-
-Write-Host "Creating GitHub Preview prerelease $Tag..."
+Write-Host "Creating GitHub Preview prerelease $Tag at $targetSha..."
 Write-Host $commandPreview
 & $ghPath @releaseArguments
 if ($LASTEXITCODE -ne 0) {
