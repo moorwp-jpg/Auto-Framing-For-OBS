@@ -178,6 +178,17 @@ Assert-StagingMatchesZip -StagingRoot $stagingPath -ZipPath $zipPath
 
 New-Item -ItemType Directory -Path $outputPath -Force | Out-Null
 $iscc = Resolve-InnoSetupCompiler -ExplicitPath $InnoSetupPath
+$minimumInnoVersion = [version]"6.7.3"
+$detectedInnoVersion = Get-InnoSetupVersion -CompilerPath $iscc
+Write-Host "Inno Setup compiler:"
+Write-Host "  Path: $iscc"
+Write-Host "  Version: $detectedInnoVersion"
+Write-Host "  Minimum supported: $minimumInnoVersion"
+if (-not (Test-InnoSetupMinimumVersion -Detected $detectedInnoVersion `
+        -Minimum $minimumInnoVersion)) {
+    throw "Inno Setup $minimumInnoVersion or newer is required. " +
+        "Detected: $detectedInnoVersion Compiler: $iscc"
+}
 $installerBaseName = "$packageBaseName-installer"
 $installerPath = Join-Path $outputPath "$installerBaseName.exe"
 $checksumPath = "$installerPath.sha256"

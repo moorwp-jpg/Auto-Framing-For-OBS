@@ -1,7 +1,7 @@
 # v0.2.0 Preview release layout
 
-`<ObsRoot>` is an OBS Studio Windows x64 installation, portable root, or prepared runtime root containing
-`bin\64bit\obs64.exe`.
+`<ObsRoot>` is a local OBS Studio Windows x64 installation, local portable root, or prepared local runtime root
+containing `bin\64bit\obs64.exe`. UNC paths and mapped network drives are not supported.
 
 ## Validated public staging and ZIP
 
@@ -54,6 +54,16 @@ Runtime files are installed into their normal OBS locations. Documentation and i
 under `data\obs-plugins\obs-auto-framing`, and Inno Setup keeps its uninstaller in that same plugin-owned tree.
 The uninstaller iterates only the compiled 11-file descriptor. A writable manifest supplies provenance only after
 every record and all metadata match the compiled policy; otherwise all payload files are preserved.
+
+The build script requires Inno Setup 6.7.3 or newer and reads FileVersionInfo from the resolved `ISCC.exe`. If an
+official installed compiler reports the indeterminate value `0.0.0.0`, it reads the Inno package ProductVersion from
+the same installation's generated uninstaller metadata. It prints the compiler path, detected version, and minimum
+supported version before compilation. Inno Setup 7 is not required for v0.2.0. The installer explicitly uses
+`RedirectionGuard=yes`, `AllowUNCPath=no`, and `AllowNetworkDrive=no`;
+RedirectionGuard is defense-in-depth rather than a claim that every filesystem redirection attack is impossible.
+
+The runtime upgrade test reads the historical archive identity from `installer\payload-policy.json` and verifies the
+exact published v0.1.1 ZIP SHA-256 before creating a disposable OBS root or extracting the archive.
 
 ## Release assets
 

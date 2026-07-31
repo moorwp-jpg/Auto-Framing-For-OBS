@@ -43,6 +43,9 @@ AppendDefaultDirName=no
 UsePreviousAppDir=yes
 DisableDirPage=no
 DisableProgramGroupPage=yes
+RedirectionGuard=yes
+AllowUNCPath=no
+AllowNetworkDrive=no
 OutputDir={#OutputDir}
 OutputBaseFilename={#OutputBaseFilename}
 ArchitecturesAllowed=x64compatible
@@ -60,7 +63,7 @@ UninstallFilesDir={app}\data\obs-plugins\{#PluginName}\installer
 
 [Messages]
 SelectDirDesc=Choose the OBS Studio Windows x64 root
-SelectDirLabel3=Select the OBS Studio root that contains bin\64bit\obs64.exe. Standard, custom, portable, and prepared runtime roots are supported.
+SelectDirLabel3=Select a local OBS Studio root that contains bin\64bit\obs64.exe. Standard, custom, portable, and prepared local runtime roots are supported.
 
 [Files]
 Source: "{#StagingRoot}\obs-plugins\64bit\obs-auto-framing.dll"; DestDir: "{app}\obs-plugins\64bit"; Flags: ignoreversion uninsneveruninstall; Check: ShouldInstallPayload(0)
@@ -80,6 +83,8 @@ Source: "{#StagingRoot}\THIRD_PARTY_NOTICES.md"; DestDir: "{app}\data\obs-plugin
 
 const
   PowerShellObsRunningResult = 10;
+  WindowsDriveRemovable = 2;
+  WindowsDriveFixed = 3;
 
 var
   PayloadWillCopy: array[0..CompiledPayloadCount - 1] of Boolean;
@@ -87,15 +92,44 @@ var
   PayloadOriginalHash: array[0..CompiledPayloadCount - 1] of String;
   PayloadCreatedByInstaller: array[0..CompiledPayloadCount - 1] of Boolean;
 
+function WindowsGetDriveType(RootPathName: String): Cardinal;
+  external 'GetDriveTypeW@kernel32.dll stdcall';
+
 function ManifestPath(): String;
 begin
   Result := ExpandConstant(
     '{app}\data\obs-plugins\{#PluginName}\installer\install-manifest.ini');
 end;
 
+function ObsRootLocationIsLocal(Path: String): Boolean;
+var
+  DriveRoot: String;
+  DriveType: Cardinal;
+begin
+  Result := False;
+  if (Length(Path) >= 2) and (Copy(Path, 1, 2) = '\\') then
+    exit;
+  DriveRoot := ExtractFileDrive(Path);
+  if DriveRoot = '' then
+    exit;
+  DriveType := WindowsGetDriveType(AddBackslash(DriveRoot));
+  Result := (DriveType = WindowsDriveFixed) or
+    (DriveType = WindowsDriveRemovable);
+end;
+
+function NetworkRootErrorText(): String;
+begin
+  Result :=
+    'OBS Auto Framing can only be installed into a local OBS Studio directory.' +
+    '' + #13#10 + #13#10 +
+    'UNC paths and mapped network drives are not supported.' + #13#10 +
+    'Select a local OBS root containing bin\64bit\obs64.exe.';
+end;
+
 function ObsRootIsValid(Path: String): Boolean;
 begin
-  Result := FileExists(AddBackslash(Path) + 'bin\64bit\obs64.exe');
+  Result := ObsRootLocationIsLocal(Path) and
+    FileExists(AddBackslash(Path) + 'bin\64bit\obs64.exe');
 end;
 
 function GetInitialObsRoot(Param: String): String;
@@ -183,6 +217,14 @@ end;
 function NextButtonClick(CurPageID: Integer): Boolean;
 begin
   Result := True;
+  if (CurPageID = wpSelectDir) and
+     not ObsRootLocationIsLocal(WizardDirValue()) then
+  begin
+    if not WizardSilent() then
+      MsgBox(NetworkRootErrorText(), mbCriticalError, MB_OK);
+    Result := WizardSilent();
+    exit;
+  end;
   if (CurPageID = wpSelectDir) and not ObsRootIsValid(WizardDirValue()) then
   begin
     if not WizardSilent() then
@@ -396,6 +438,11 @@ begin
       Result := 'Setup could not safely determine whether OBS Studio is running. Close OBS and verify Windows PowerShell process queries, then try again.'
     else
       Result := 'OBS Studio is running. Close OBS before installing, upgrading, or repairing OBS Auto Framing.';
+    exit;
+  end;
+  if not ObsRootLocationIsLocal(WizardDirValue()) then
+  begin
+    Result := NetworkRootErrorText();
     exit;
   end;
   if not ObsRootIsValid(WizardDirValue()) then

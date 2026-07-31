@@ -200,6 +200,8 @@ The pending-frame slot remains bounded, so slower inference reduces update frequ
 - Close OBS before install, upgrade, repair, or uninstall. Silent mode returns a nonzero code when `obs64.exe` is
   running.
 - Select the OBS root containing `bin\64bit\obs64.exe`, not `bin\64bit` itself.
+- Use a local standard, custom, portable, or prepared OBS root. UNC paths and mapped network drives are rejected before
+  payload files are written. Copy or install OBS to a local drive and select that local root.
 - If a different `obs-plugins\64bit\onnxruntime.dll` exists, the installer stops instead of replacing a potentially
   shared runtime. Use a separate OBS root or review compatibility before manual installation.
 - If an expected plugin DLL, effect, locale, or model is unknown or locally modified, setup names that relative path
@@ -207,6 +209,9 @@ The pending-frame slot remains bounded, so slower inference reduces update frequ
 - Repair reuses the previously selected OBS root. If that root moved or no longer contains
   `bin\64bit\obs64.exe`, browse to a valid root interactively or pass `/DIR=<valid root>` in silent mode.
 - The v0.2.0 installer is unsigned. Windows SmartScreen may warn; verify the `.sha256` file from the GitHub Release.
+
+Installer builds require Inno Setup 6.7.3 or newer. Inno Setup 7 is not required for v0.2.0. RedirectionGuard is
+explicitly enabled as defense-in-depth; a RedirectionGuard refusal may include Windows error 448 in the setup log.
 
 The uninstaller considers only its compiled 11-file allowlist. It logs and preserves files whose hash changed after
 installation, plus files that existed before installation—including a pre-existing shared ONNX Runtime. If any

@@ -27,8 +27,9 @@ This is a preview release. When filing bugs, please include OBS version, Windows
 4. Start OBS, select a video source, open Filters, and add the `Auto Framing` video filter.
 
 Portable/manual: download `obs-auto-framing-v0.2.0-windows-x64.zip` and extract it into the same OBS root.
-The installer supports standard, custom, portable, and prepared OBS runtime roots. Administrator permission may be
-required for Program Files. The installer is currently unsigned, so Windows SmartScreen may warn about a new
+The installer supports standard, local custom, local portable, and prepared local OBS runtime roots. UNC paths and
+mapped network drives are not supported. Administrator permission may be required for Program Files. The installer is
+currently unsigned, so Windows SmartScreen may warn about a new
 application. Repair reuses the previously selected OBS root. Unknown or modified files at installer destinations are
 rejected before any payload is written, and an invalid ownership manifest makes uninstall preserve all payload files.
 
@@ -132,6 +133,8 @@ out\release\obs-auto-framing-v0.2.0-windows-x64-installer.exe.sha256
 YOLOX-Tiny is bundled by default. Add `-IncludeNano` for the lightweight fallback model or `-IncludeSmall` for YOLOX-S. YOLOX-S can be more accurate, but it is larger and slower on CPU.
 
 Use [docs/release_checklist.md](docs/release_checklist.md) for the final v0.2.0 Preview QA pass.
+Building the installer requires Inno Setup 6.7.3 or newer; Inno Setup 7 is not required for v0.2.0. The installer
+explicitly enables RedirectionGuard as defense-in-depth against unprivileged path redirection.
 
 ## GitHub Release
 

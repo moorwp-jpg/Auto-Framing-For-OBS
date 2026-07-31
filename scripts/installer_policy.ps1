@@ -8,6 +8,165 @@ function Get-InstallerPolicyPath {
         (Join-Path (Join-Path $PSScriptRoot "..") "installer\payload-policy.json"))
 }
 
+function ConvertTo-InnoSetupVersion {
+    param([string]$VersionText)
+
+    if ([string]::IsNullOrWhiteSpace($VersionText)) {
+        throw "The Inno Setup compiler version is empty."
+    }
+    $match = [regex]::Match(
+        $VersionText, '(?<!\d)(?<major>\d+)\.(?<minor>\d+)\.(?<patch>\d+)(?:\.(?<build>\d+))?')
+    if (-not $match.Success) {
+        throw "Could not parse an Inno Setup major, minor, and patch version from '$VersionText'."
+    }
+    $normalized = "$($match.Groups['major'].Value).$($match.Groups['minor'].Value)." +
+        $match.Groups['patch'].Value
+    if ($match.Groups['build'].Success) {
+        $normalized += ".$($match.Groups['build'].Value)"
+    }
+    try {
+        return [version]$normalized
+    }
+    catch {
+        throw "Could not parse the Inno Setup compiler version '$VersionText'."
+    }
+}
+
+function Test-InnoSetupMinimumVersion {
+    param(
+        [Parameter(Mandatory = $true)][version]$Detected,
+        [version]$Minimum = [version]"6.7.3"
+    )
+
+    return $Detected -ge $Minimum
+}
+
+function Get-InnoSetupVersion {
+    param([Parameter(Mandatory = $true)][string]$CompilerPath)
+
+    if (-not (Test-Path -LiteralPath $CompilerPath -PathType Leaf)) {
+        throw "Inno Setup compiler not found: $CompilerPath"
+    }
+    $compilerInfo = [System.Diagnostics.FileVersionInfo]::GetVersionInfo($CompilerPath)
+    $compilerProductName = ([string]$compilerInfo.ProductName).Trim()
+    $compilerDescription = ([string]$compilerInfo.FileDescription).Trim()
+    if ($compilerProductName -cne "Inno Setup" -or
+        $compilerDescription -cne "Inno Setup Command-Line Compiler") {
+        throw "The resolved compiler does not identify itself as Inno Setup ISCC.exe: $CompilerPath"
+    }
+    $versionSources = @(
+        [pscustomobject]@{ Text = $compilerInfo.ProductVersion; Source = $CompilerPath },
+        [pscustomobject]@{ Text = $compilerInfo.FileVersion; Source = $CompilerPath }
+    )
+
+    # Official installed builds may stamp ISCC.exe as 0.0.0.0. In that case,
+    # the Inno-generated uninstaller beside the compiler carries the package ProductVersion.
+    $packageMetadataPath = Join-Path (Split-Path -Parent $CompilerPath) "unins000.exe"
+    if (Test-Path -LiteralPath $packageMetadataPath -PathType Leaf) {
+        $packageInfo = [System.Diagnostics.FileVersionInfo]::GetVersionInfo($packageMetadataPath)
+        if (([string]$packageInfo.ProductName).Trim() -ceq "Inno Setup") {
+            $versionSources += @(
+                [pscustomobject]@{ Text = $packageInfo.ProductVersion; Source = $packageMetadataPath },
+                [pscustomobject]@{ Text = $packageInfo.FileVersion; Source = $packageMetadataPath }
+            )
+        }
+    }
+
+    foreach ($candidate in $versionSources) {
+        if ([string]::IsNullOrWhiteSpace([string]$candidate.Text)) {
+            continue
+        }
+        try {
+            $parsed = ConvertTo-InnoSetupVersion -VersionText ([string]$candidate.Text)
+            if ($parsed.Major -ne 0 -or $parsed.Minor -ne 0 -or
+                $parsed.Build -ne 0 -or $parsed.Revision -gt 0) {
+                return $parsed
+            }
+        }
+        catch {
+            continue
+        }
+    }
+    throw "Could not determine a nonzero Inno Setup compiler version from FileVersionInfo: $CompilerPath"
+}
+
+function Get-PublicV011ArchivePolicy {
+    param([string]$PolicyPath = (Get-InstallerPolicyPath))
+
+    if (-not (Test-Path -LiteralPath $PolicyPath -PathType Leaf)) {
+        throw "Installer payload policy not found: $PolicyPath"
+    }
+    $document = Get-Content -Raw -LiteralPath $PolicyPath | ConvertFrom-Json
+    $sourceProperty = $document.PSObject.Properties["previousHashSource"]
+    if ($null -eq $sourceProperty -or $null -eq $document.previousHashSource) {
+        throw "Installer payload policy is missing previousHashSource."
+    }
+    foreach ($property in @("release", "asset", "assetSHA256")) {
+        if ($null -eq $document.previousHashSource.PSObject.Properties[$property]) {
+            throw "Installer payload policy previousHashSource is missing '$property'."
+        }
+    }
+    $release = [string]$document.previousHashSource.release
+    $asset = [string]$document.previousHashSource.asset
+    $sha256 = [string]$document.previousHashSource.assetSHA256
+    if ([string]::IsNullOrWhiteSpace($release)) {
+        throw "Installer payload policy previousHashSource.release is empty."
+    }
+    if ($asset -cne "obs-auto-framing-v0.1.1-windows-x64.zip") {
+        throw "Installer payload policy has an unexpected v0.1.1 archive name: $asset"
+    }
+    if ($sha256 -cnotmatch '^[0-9a-f]{64}$') {
+        throw "Installer payload policy has an invalid lowercase v0.1.1 archive SHA-256."
+    }
+    return [pscustomobject]@{
+        Release = $release
+        Asset = $asset
+        SHA256 = $sha256
+    }
+}
+
+function Assert-PublicV011ArchiveIdentity {
+    param(
+        [Parameter(Mandatory = $true)][string]$ArchiveFileName,
+        [Parameter(Mandatory = $true)][string]$ActualSHA256,
+        [Parameter(Mandatory = $true)]$Policy
+    )
+
+    if ($ArchiveFileName -cne [string]$Policy.Asset) {
+        throw "The v0.1.1 upgrade test archive filename must be '$($Policy.Asset)'; found '$ArchiveFileName'."
+    }
+    if ($ActualSHA256 -notmatch '^[0-9a-fA-F]{64}$') {
+        throw "The v0.1.1 upgrade test archive has an invalid SHA-256 value."
+    }
+    $actualNormalized = $ActualSHA256.ToLowerInvariant()
+    if ($actualNormalized -cne [string]$Policy.SHA256) {
+        throw "The v0.1.1 upgrade test archive does not match the published public release. " +
+            "Expected SHA-256: $($Policy.SHA256) Actual SHA-256: $actualNormalized"
+    }
+    return $true
+}
+
+function Assert-PublicV011UpgradeArchive {
+    param(
+        [Parameter(Mandatory = $true)][string]$ArchivePath,
+        [string]$PolicyPath = (Get-InstallerPolicyPath)
+    )
+
+    if (-not (Test-Path -LiteralPath $ArchivePath -PathType Leaf)) {
+        throw "The v0.1.1 upgrade test archive was not found: $ArchivePath"
+    }
+    $policy = Get-PublicV011ArchivePolicy -PolicyPath $PolicyPath
+    $actual = (Get-FileHash -Algorithm SHA256 -LiteralPath $ArchivePath).Hash.ToLowerInvariant()
+    $null = Assert-PublicV011ArchiveIdentity `
+        -ArchiveFileName ([System.IO.Path]::GetFileName($ArchivePath)) `
+        -ActualSHA256 $actual -Policy $policy
+    return [pscustomobject]@{
+        File = [System.IO.Path]::GetFileName($ArchivePath)
+        SHA256 = $actual
+        Release = $policy.Release
+    }
+}
+
 function Resolve-InstallerTargetPath {
     param(
         [Parameter(Mandatory = $true)][string]$ObsRoot,
@@ -60,15 +219,10 @@ function Get-InstallerPayloadDescriptor {
     if (-not (Test-Path -LiteralPath $PolicyPath -PathType Leaf)) {
         throw "Installer payload policy not found: $PolicyPath"
     }
+    $null = Get-PublicV011ArchivePolicy -PolicyPath $PolicyPath
     $document = Get-Content -Raw -LiteralPath $PolicyPath | ConvertFrom-Json
     if ($document.schemaVersion -ne 1) {
         throw "Unsupported installer payload policy schema: $($document.schemaVersion)"
-    }
-    if ([string]::IsNullOrWhiteSpace([string]$document.previousHashSource.release) -or
-        [string]$document.previousHashSource.asset -cne
-            "obs-auto-framing-v0.1.1-windows-x64.zip" -or
-        [string]$document.previousHashSource.assetSHA256 -notmatch '^[0-9a-f]{64}$') {
-        throw "Installer payload policy is missing the verified v0.1.1 hash source."
     }
 
     $items = @($document.payload)
@@ -135,14 +289,40 @@ function Get-ResolvedInstallerPayloadPolicy {
     })
 }
 
-function Test-ObsInstallationRoot {
-    param([Parameter(Mandatory = $true)][string]$ObsRoot)
+function Test-InstallerRootLocationPolicy {
+    param(
+        [string]$ObsRoot,
+        [System.IO.DriveType]$DriveType = [System.IO.DriveType]::Unknown
+    )
+
+    if ([string]::IsNullOrWhiteSpace($ObsRoot) -or
+        -not [System.IO.Path]::IsPathRooted($ObsRoot) -or
+        $ObsRoot.StartsWith("\\", [System.StringComparison]::Ordinal)) {
+        return $false
+    }
     try {
         $rootFull = [System.IO.Path]::GetFullPath($ObsRoot)
+        $pathRoot = [System.IO.Path]::GetPathRoot($rootFull)
+        if ([string]::IsNullOrWhiteSpace($pathRoot)) {
+            return $false
+        }
+        if (-not $PSBoundParameters.ContainsKey("DriveType")) {
+            $DriveType = ([System.IO.DriveInfo]::new($pathRoot)).DriveType
+        }
     }
     catch {
         return $false
     }
+    return $DriveType -eq [System.IO.DriveType]::Fixed -or
+        $DriveType -eq [System.IO.DriveType]::Removable
+}
+
+function Test-ObsInstallationRoot {
+    param([Parameter(Mandatory = $true)][string]$ObsRoot)
+    if (-not (Test-InstallerRootLocationPolicy -ObsRoot $ObsRoot)) {
+        return $false
+    }
+    $rootFull = [System.IO.Path]::GetFullPath($ObsRoot)
     return (Test-Path -LiteralPath (Join-Path $rootFull "bin\64bit\obs64.exe") -PathType Leaf)
 }
 

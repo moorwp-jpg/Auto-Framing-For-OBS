@@ -3,7 +3,7 @@
   "previousHashSource": {
     "release": "https://github.com/moorwp-jpg/Auto-Framing-For-OBS/releases/tag/v0.1.1",
     "asset": "obs-auto-framing-v0.1.1-windows-x64.zip",
-    "assetSHA256": "8cff523c8006f12ee229fddd1a1d188eaeb725d5f2d958660872feb102e9e3a4"
+    "assetSHA256": "8cff523c196b48c38b77847e9e9721e926eeea94b4956b95eedacab73dc38f19"
   },
   "payload": [
     {

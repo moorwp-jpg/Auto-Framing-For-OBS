@@ -20,7 +20,8 @@ Use this checklist first on the release-preparation PR, then repeat it against a
 - [ ] Run `scripts\package_release.ps1`.
 - [ ] Confirm the ZIP and staging match the allowlist in `docs\release_layout.md`.
 - [ ] Confirm YOLOX-Tiny is present and Nano, S, YOLO26, pose, private assets, sources, PDBs, and nested archives are absent.
-- [ ] Run `scripts\build_installer.ps1` with Inno Setup 6.
+- [ ] Run `scripts\build_installer.ps1` with Inno Setup 6.7.3 or newer; record the detected compiler path and version.
+- [ ] Confirm `RedirectionGuard=yes`, `AllowUNCPath=no`, and `AllowNetworkDrive=no` remain explicit.
 - [ ] Confirm the installer is unsigned unless an actual code-signing step was completed.
 - [ ] Record SHA-256 hashes for the ZIP and installer.
 
@@ -35,6 +36,8 @@ Use this checklist first on the release-preparation PR, then repeat it against a
 - [ ] Reject unknown or modified plugin, effect, and model files before any payload write.
 - [ ] Tamper the manifest path to `bin\64bit\obs64.exe`; confirm uninstall preserves every payload and OBS file.
 - [ ] Repair a custom path containing spaces without `/DIR`; confirm the remembered root and ownership are retained.
+- [ ] Reject UNC and mapped network-drive roots before any payload write; retain local custom and portable support.
+- [ ] Confirm the runtime harness validates the exact published v0.1.1 ZIP SHA-256 before extracting it.
 - [ ] Confirm a different pre-existing ONNX Runtime is not silently replaced.
 - [ ] Uninstall only hash-proven plugin-owned files.
 - [ ] Preserve pre-existing and modified shared ONNX Runtime files.

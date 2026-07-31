@@ -135,6 +135,10 @@ foreach ($required in @($InstallerExe, $ObsZipPath, $v011Path)) {
         throw "Runtime-test input is missing: $required"
     }
 }
+$validatedV011Archive = Assert-PublicV011UpgradeArchive -ArchivePath $v011Path
+Write-Host "Validated public v0.1.1 upgrade archive:"
+Write-Host "  File: $($validatedV011Archive.File)"
+Write-Host "  SHA-256: $($validatedV011Archive.SHA256)"
 $script:Descriptor = @(Get-InstallerPayloadDescriptor)
 
 if (Test-Path -LiteralPath $TestRoot) {
@@ -237,6 +241,14 @@ try {
         throw "Invalid-root rejection wrote files."
     }
     Write-Host "Invalid-root silent rejection passed (exit $($invalidResult.ExitCode))."
+
+    if (Test-InstallerRootLocationPolicy -ObsRoot "\\server\share\obs-studio" `
+            -DriveType ([System.IO.DriveType]::Network)) {
+        throw "Deterministic runtime policy accepted a UNC network root."
+    }
+    Write-Host (
+        "UNC and mapped-drive rejection passed deterministically; " +
+        "no accessible live UNC fixture was created.")
 
     Write-Host "Installer runtime policy matrix passed."
     Write-Host "Logs retained under: $TestRoot"

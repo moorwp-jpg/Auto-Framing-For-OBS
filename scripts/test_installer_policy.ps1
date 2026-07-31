@@ -48,6 +48,13 @@ function Assert-Equal {
     }
 }
 
+function Write-PolicyFixture {
+    param($Document, [string]$Name)
+    $path = Join-Path $fixtureRoot $Name
+    Write-FixtureFile -Path $path -Value ($Document | ConvertTo-Json -Depth 8)
+    return $path
+}
+
 function Copy-PolicyPayload {
     param([object[]]$Policy, [string]$Staging, [string]$ObsRoot)
     foreach ($item in $Policy) {
@@ -87,6 +94,118 @@ try {
     }
     Write-Host "Verified exact public v0.1.1 manual-upgrade hashes."
 
+    $versionCases = [ordered]@{
+        "6.7.2" = $false
+        "6.7.3" = $true
+        "6.7.4" = $true
+        "6.8.0" = $true
+        "7.0.0" = $true
+        "6.7.3.0" = $true
+        "Inno Setup 6.7.3 (u)" = $true
+    }
+    foreach ($versionText in $versionCases.Keys) {
+        $parsedVersion = ConvertTo-InnoSetupVersion -VersionText $versionText
+        Assert-Equal (Test-InnoSetupMinimumVersion -Detected $parsedVersion) `
+            $versionCases[$versionText] "Incorrect Inno Setup minimum result for $versionText"
+    }
+    foreach ($invalidVersion in @("", "invalid", "6", "6.7")) {
+        Assert-Rejected {
+            ConvertTo-InnoSetupVersion -VersionText $invalidVersion
+        } "indeterminate Inno Setup version '$invalidVersion'"
+    }
+    $indeterminateCompiler = Join-Path $fixtureRoot "ISCC.exe"
+    Write-FixtureFile -Path $indeterminateCompiler -Value "not an Inno Setup compiler"
+    Assert-Rejected {
+        Get-InnoSetupVersion -CompilerPath $indeterminateCompiler
+    } "compiler with indeterminate FileVersionInfo"
+
+    $buildInstallerText = Get-Content -Raw -LiteralPath (
+        Join-Path $PSScriptRoot "build_installer.ps1")
+    $versionCheckIndex = $buildInstallerText.IndexOf(
+        '$detectedInnoVersion = Get-InnoSetupVersion')
+    $minimumCheckIndex = $buildInstallerText.IndexOf(
+        'Test-InnoSetupMinimumVersion -Detected')
+    $compilerInvocationIndex = $buildInstallerText.IndexOf('& $iscc @isccArguments')
+    if ($versionCheckIndex -lt 0 -or $minimumCheckIndex -lt 0 -or
+        $compilerInvocationIndex -lt 0 -or
+        $versionCheckIndex -gt $compilerInvocationIndex -or
+        $minimumCheckIndex -gt $compilerInvocationIndex) {
+        throw "Inno Setup version validation must occur before compiler invocation."
+    }
+    Write-Host "Validated Inno Setup 6.7.3 minimum-version parsing and comparison."
+
+    $archivePolicy = Get-PublicV011ArchivePolicy
+    Assert-Equal $archivePolicy.Asset "obs-auto-framing-v0.1.1-windows-x64.zip" `
+        "Incorrect public v0.1.1 archive filename"
+    Assert-Equal $archivePolicy.SHA256 `
+        "8cff523c196b48c38b77847e9e9721e926eeea94b4956b95eedacab73dc38f19" `
+        "Incorrect public v0.1.1 archive SHA-256"
+    $null = Assert-PublicV011ArchiveIdentity -ArchiveFileName $archivePolicy.Asset `
+        -ActualSHA256 $archivePolicy.SHA256 -Policy $archivePolicy
+    $null = Assert-PublicV011ArchiveIdentity -ArchiveFileName $archivePolicy.Asset `
+        -ActualSHA256 $archivePolicy.SHA256.ToUpperInvariant() -Policy $archivePolicy
+    Assert-Rejected {
+        Assert-PublicV011ArchiveIdentity -ArchiveFileName "wrong-v0.1.1.zip" `
+            -ActualSHA256 $archivePolicy.SHA256 -Policy $archivePolicy
+    } "incorrect public v0.1.1 archive filename"
+    Assert-Rejected {
+        Assert-PublicV011ArchiveIdentity -ArchiveFileName $archivePolicy.Asset `
+            -ActualSHA256 ("0" * 64) -Policy $archivePolicy
+    } "incorrect public v0.1.1 archive hash"
+
+    $validSource = @{
+        release = "https://github.com/moorwp-jpg/Auto-Framing-For-OBS/releases/tag/v0.1.1"
+        asset = $archivePolicy.Asset
+        assetSHA256 = $archivePolicy.SHA256
+    }
+    Assert-Rejected {
+        Get-PublicV011ArchivePolicy -PolicyPath (
+            Write-PolicyFixture -Document @{} -Name "missing-source.json")
+    } "missing previousHashSource"
+    Assert-Rejected {
+        Get-PublicV011ArchivePolicy -PolicyPath (
+            Write-PolicyFixture -Document @{
+                previousHashSource = @{
+                    release = $validSource.release
+                    asset = $validSource.asset
+                }
+            } -Name "missing-archive-sha.json")
+    } "missing public archive SHA-256"
+    foreach ($invalidPolicyHash in @("bad-hash", $archivePolicy.SHA256.ToUpperInvariant())) {
+        Assert-Rejected {
+            Get-PublicV011ArchivePolicy -PolicyPath (
+                Write-PolicyFixture -Document @{
+                    previousHashSource = @{
+                        release = $validSource.release
+                        asset = $validSource.asset
+                        assetSHA256 = $invalidPolicyHash
+                    }
+                } -Name ("invalid-archive-sha-" + [guid]::NewGuid() + ".json"))
+        } "noncanonical public archive SHA-256"
+    }
+    $wrongArchiveFixture = Join-Path $fixtureRoot $archivePolicy.Asset
+    Write-FixtureFile -Path $wrongArchiveFixture -Value "not the published archive"
+    Assert-Rejected {
+        Assert-PublicV011UpgradeArchive -ArchivePath $wrongArchiveFixture
+    } "fixture archive with incorrect content hash"
+
+    $runtimeScriptText = Get-Content -Raw -LiteralPath (
+        Join-Path $PSScriptRoot "test_installer_runtime.ps1")
+    $archiveValidationIndex = $runtimeScriptText.IndexOf(
+        '$validatedV011Archive = Assert-PublicV011UpgradeArchive')
+    $testRootMutationIndex = $runtimeScriptText.IndexOf(
+        'if (Test-Path -LiteralPath $TestRoot)')
+    $upgradeExtractionIndex = $runtimeScriptText.IndexOf(
+        'Expand-Archive -LiteralPath $v011Path')
+    if ($archiveValidationIndex -lt 0 -or
+        $testRootMutationIndex -lt 0 -or
+        $upgradeExtractionIndex -lt 0 -or
+        $archiveValidationIndex -gt $testRootMutationIndex -or
+        $archiveValidationIndex -gt $upgradeExtractionIndex) {
+        throw "Runtime archive validation must occur before test-root mutation and upgrade extraction."
+    }
+    Write-Host "Validated canonical public v0.1.1 archive policy and pre-extraction ordering."
+
     foreach ($missing in @(
         "obs-plugins\64bit\obs-auto-framing.dll",
         "obs-plugins\64bit\onnxruntime.dll",
@@ -108,6 +227,29 @@ try {
         Assert-Rejected { Assert-InstallerStaging -StagingRoot $staging } "unexpected $blocked"
     }
 
+    foreach ($allowedRoot in @(
+        @{ Path = "C:\Program Files\obs-studio"; Drive = [System.IO.DriveType]::Fixed },
+        @{ Path = "C:\Local OBS With Spaces"; Drive = [System.IO.DriveType]::Fixed },
+        @{ Path = "E:\Portable OBS"; Drive = [System.IO.DriveType]::Removable }
+    )) {
+        if (-not (Test-InstallerRootLocationPolicy -ObsRoot $allowedRoot.Path `
+                -DriveType $allowedRoot.Drive)) {
+            throw "Local installer root policy rejected '$($allowedRoot.Path)'."
+        }
+    }
+    foreach ($rejectedRoot in @(
+        @{ Path = "\\server\share\obs-studio"; Drive = [System.IO.DriveType]::Network },
+        @{ Path = "\\server\share\obs-studio\bin\64bit\obs64.exe"; Drive = [System.IO.DriveType]::Fixed },
+        @{ Path = "Z:\mapped-obs"; Drive = [System.IO.DriveType]::Network },
+        @{ Path = "relative\obs-studio"; Drive = [System.IO.DriveType]::Fixed },
+        @{ Path = "::invalid::"; Drive = [System.IO.DriveType]::Fixed }
+    )) {
+        if (Test-InstallerRootLocationPolicy -ObsRoot $rejectedRoot.Path `
+                -DriveType $rejectedRoot.Drive) {
+            throw "Network, relative, or malformed installer root was accepted: $($rejectedRoot.Path)"
+        }
+    }
+
     $invalidObsRoot = Join-Path $fixtureRoot "invalid-obs"
     New-Item -ItemType Directory -Path $invalidObsRoot -Force | Out-Null
     if (Test-ObsInstallationRoot -ObsRoot $invalidObsRoot) {
@@ -118,7 +260,29 @@ try {
     if (-not (Test-ObsInstallationRoot -ObsRoot $obsRoot)) {
         throw "Valid custom OBS root was rejected."
     }
-    Write-Host "Validated custom OBS-root policy."
+    $portableRoot = Join-Path $fixtureRoot "local portable obs root"
+    New-ObsRoot -Root $portableRoot
+    if (-not (Test-ObsInstallationRoot -ObsRoot $portableRoot)) {
+        throw "Valid local portable OBS root was rejected."
+    }
+    Write-Host "Validated local fixed, custom, portable, UNC, and mapped-drive root policy."
+
+    $installerScriptText = Get-Content -Raw -LiteralPath (
+        Join-Path (Join-Path $PSScriptRoot "..") "installer\obs-auto-framing.iss")
+    foreach ($directive in @(
+        "RedirectionGuard=yes", "AllowUNCPath=no", "AllowNetworkDrive=no"
+    )) {
+        if ($installerScriptText -cnotmatch [regex]::Escape($directive)) {
+            throw "Installer script is missing required security directive: $directive"
+        }
+    }
+    foreach ($requiredText in @(
+        "ObsRootLocationIsLocal", "WindowsGetDriveType", "UNC paths and mapped network drives"
+    )) {
+        if ($installerScriptText -cnotmatch [regex]::Escape($requiredText)) {
+            throw "Installer script is missing local-root enforcement: $requiredText"
+        }
+    }
 
     foreach ($injectedPath in @(
         "..\outside.dll", "data\..\outside.dll", "C:\outside.dll",

@@ -11,9 +11,13 @@ public YOLOX-Tiny package and use ONNX Runtime CPU by default.
 4. Select the OBS root containing `bin\64bit\obs64.exe`.
 5. Start OBS, select a video source, open Filters, and add the `Auto Framing` video filter.
 
-The installer supports the standard Program Files installation, custom installation paths, portable OBS roots, and
-prepared development/runtime roots. It refuses an invalid directory and never creates a fake OBS installation. It
-also refuses installation, upgrade, repair, and uninstallation while `obs64.exe` is running.
+The installer supports the standard Program Files installation, local custom installation paths, local portable OBS
+roots, and prepared local development/runtime roots. UNC paths and mapped network-drive OBS roots are not supported.
+It refuses an invalid or network directory and never creates a fake OBS installation. It also refuses installation,
+upgrade, repair, and uninstallation while `obs64.exe` is running.
+
+`RedirectionGuard=yes` is explicitly enabled as defense-in-depth against unprivileged NTFS junction and symbolic-link
+redirection. This mitigation does not make every filesystem or junction attack impossible.
 
 For unattended installation into a user-writable portable or test root, pass `/CURRENTUSER` together with Inno
 Setup's silent options and `/DIR=<OBS root>`. Program Files installations keep the default administrator requirement.
@@ -52,6 +56,10 @@ Installing v0.2.0 over the exact published v0.1.1 manual ZIP layout recognizes t
 plugin DLL, effect, locale, YOLOX-Tiny model, and shared runtime. The v0.2.0 replacements for the four non-shared
 plugin files become installer-owned and are removable on uninstall. OBS scenes, profiles, source settings, and
 plugin configuration are not removed.
+
+The runtime upgrade harness verifies the exact published archive name
+`obs-auto-framing-v0.1.1-windows-x64.zip` and SHA-256
+`8cff523c196b48c38b77847e9e9721e926eeea94b4956b95eedacab73dc38f19` before it creates or modifies a test root.
 
 `obs-plugins\64bit\onnxruntime.dll` is treated as shared. An identical pre-existing runtime is reused. The installer
 also recognizes the exact runtime published in the v0.1.1 public ZIP and replaces it as the documented compatibility
