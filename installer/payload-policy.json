@@ -1,0 +1,134 @@
+{
+  "schemaVersion": 1,
+  "previousHashSource": {
+    "release": "https://github.com/moorwp-jpg/Auto-Framing-For-OBS/releases/tag/v0.1.1",
+    "asset": "obs-auto-framing-v0.1.1-windows-x64.zip",
+    "assetSHA256": "8cff523c196b48c38b77847e9e9721e926eeea94b4956b95eedacab73dc38f19"
+  },
+  "payload": [
+    {
+      "id": "plugin",
+      "stagingPath": "obs-plugins\\64bit\\obs-auto-framing.dll",
+      "relativePath": "obs-plugins\\64bit\\obs-auto-framing.dll",
+      "shared": false,
+      "recognizedManualUpgrade": true,
+      "removeOnUninstall": true,
+      "previousHashes": [
+        {
+          "version": "0.1.1",
+          "sha256": "5a33fa827465a666559a5e01d58d7d885a964f069ef104a7bfbec5e468d30d51"
+        }
+      ]
+    },
+    {
+      "id": "runtime",
+      "stagingPath": "obs-plugins\\64bit\\onnxruntime.dll",
+      "relativePath": "obs-plugins\\64bit\\onnxruntime.dll",
+      "shared": true,
+      "recognizedManualUpgrade": true,
+      "removeOnUninstall": true,
+      "previousHashes": [
+        {
+          "version": "0.1.1",
+          "sha256": "c707fd4b555781b0d7ac6f6d64f2e94227793f9d21283664638c21817fe5597d"
+        }
+      ]
+    },
+    {
+      "id": "effect",
+      "stagingPath": "data\\obs-plugins\\obs-auto-framing\\effects\\crop.effect",
+      "relativePath": "data\\obs-plugins\\obs-auto-framing\\effects\\crop.effect",
+      "shared": false,
+      "recognizedManualUpgrade": true,
+      "removeOnUninstall": true,
+      "previousHashes": [
+        {
+          "version": "0.1.1",
+          "sha256": "91db6e6c7776cba0a8322f09d3d7798669c27e3f9116a055c95fee9f4e6ec3ff"
+        }
+      ]
+    },
+    {
+      "id": "locale",
+      "stagingPath": "data\\obs-plugins\\obs-auto-framing\\locale\\en-US.ini",
+      "relativePath": "data\\obs-plugins\\obs-auto-framing\\locale\\en-US.ini",
+      "shared": false,
+      "recognizedManualUpgrade": true,
+      "removeOnUninstall": true,
+      "previousHashes": [
+        {
+          "version": "0.1.1",
+          "sha256": "cda8431ceebb74da1e854522226c5854ace7d400fe1baef2113583b5b4279a70"
+        }
+      ]
+    },
+    {
+      "id": "model",
+      "stagingPath": "data\\obs-plugins\\obs-auto-framing\\models\\yolox_tiny.onnx",
+      "relativePath": "data\\obs-plugins\\obs-auto-framing\\models\\yolox_tiny.onnx",
+      "shared": false,
+      "recognizedManualUpgrade": true,
+      "removeOnUninstall": true,
+      "previousHashes": [
+        {
+          "version": "0.1.1",
+          "sha256": "427cc366d34e27ff7a03e2899b5e3671425c262ea2291f88bb942bc1cc70b0f7"
+        }
+      ]
+    },
+    {
+      "id": "install-doc",
+      "stagingPath": "docs\\install.md",
+      "relativePath": "data\\obs-plugins\\obs-auto-framing\\docs\\install.md",
+      "shared": false,
+      "recognizedManualUpgrade": false,
+      "removeOnUninstall": true,
+      "previousHashes": []
+    },
+    {
+      "id": "troubleshooting-doc",
+      "stagingPath": "docs\\troubleshooting.md",
+      "relativePath": "data\\obs-plugins\\obs-auto-framing\\docs\\troubleshooting.md",
+      "shared": false,
+      "recognizedManualUpgrade": false,
+      "removeOnUninstall": true,
+      "previousHashes": []
+    },
+    {
+      "id": "license",
+      "stagingPath": "LICENSE",
+      "relativePath": "data\\obs-plugins\\obs-auto-framing\\docs\\LICENSE",
+      "shared": false,
+      "recognizedManualUpgrade": false,
+      "removeOnUninstall": true,
+      "previousHashes": []
+    },
+    {
+      "id": "readme",
+      "stagingPath": "README.md",
+      "relativePath": "data\\obs-plugins\\obs-auto-framing\\docs\\README.md",
+      "shared": false,
+      "recognizedManualUpgrade": false,
+      "removeOnUninstall": true,
+      "previousHashes": []
+    },
+    {
+      "id": "security",
+      "stagingPath": "SECURITY.md",
+      "relativePath": "data\\obs-plugins\\obs-auto-framing\\docs\\SECURITY.md",
+      "shared": false,
+      "recognizedManualUpgrade": false,
+      "removeOnUninstall": true,
+      "previousHashes": []
+    },
+    {
+      "id": "notices",
+      "stagingPath": "THIRD_PARTY_NOTICES.md",
+      "relativePath": "data\\obs-plugins\\obs-auto-framing\\docs\\THIRD_PARTY_NOTICES.md",
+      "shared": false,
+      "recognizedManualUpgrade": false,
+      "removeOnUninstall": true,
+      "previousHashes": []
+    }
+  ]
+}

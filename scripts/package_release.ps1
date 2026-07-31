@@ -353,8 +353,7 @@ $outputDirResolved = (Resolve-Path -LiteralPath $outputDirPath).Path
 $packageName = "$pluginName-v$version-windows-x64"
 $zipPath = Join-Path $outputDirResolved "$packageName.zip"
 $checksumPath = "$zipPath.sha256"
-$stagingParent = Join-Path $outputDirResolved "_staging"
-$script:StagingRoot = Join-Path $stagingParent $packageName
+$script:StagingRoot = Join-Path $outputDirResolved "staging"
 
 if (-not (Test-IsUnderPath -ChildPath $StagingRoot -ParentPath $outputDirResolved)) {
     throw "Refusing to stage outside the output directory: $StagingRoot"

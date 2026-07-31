@@ -22,10 +22,21 @@ This is a preview release. When filing bugs, please include OBS version, Windows
 ## Quick Install
 
 1. Close OBS Studio.
-2. Extract `obs-auto-framing-v0.1.1-windows-x64.zip` into the OBS install root, usually `C:\Program Files\obs-studio`.
-3. Start OBS, select a video source, open Filters, and add the `Auto Framing` video filter.
+2. Recommended: download and run `obs-auto-framing-v0.2.0-windows-x64-installer.exe`.
+3. Select the OBS root containing `bin\64bit\obs64.exe`.
+4. Start OBS, select a video source, open Filters, and add the `Auto Framing` video filter.
 
-The release zip is laid out so it can be extracted directly into an OBS install or OBS build runtime folder. The default package includes `obs-auto-framing.dll`, `onnxruntime.dll`, `crop.effect`, `en-US.ini`, and `yolox_tiny.onnx`, so the default ONNX Runtime CPU settings work without manually selecting a model path. See [docs/install.md](docs/install.md), [docs/troubleshooting.md](docs/troubleshooting.md), and [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md) for install help and bundled asset notices.
+Portable/manual: download `obs-auto-framing-v0.2.0-windows-x64.zip` and extract it into the same OBS root.
+The installer supports standard, local custom, local portable, and prepared local OBS runtime roots. UNC paths and
+mapped network drives are not supported. Administrator permission may be required for Program Files. The installer is
+currently unsigned, so Windows SmartScreen may warn about a new
+application. Repair reuses the previously selected OBS root. Unknown or modified files at installer destinations are
+rejected before any payload is written, and an invalid ownership manifest makes uninstall preserve all payload files.
+
+The installer and default ZIP include `obs-auto-framing.dll`, `onnxruntime.dll`, `crop.effect`, `en-US.ini`, and only
+`yolox_tiny.onnx`, so the default ONNX Runtime CPU settings work without a custom model path. See
+[docs/install.md](docs/install.md), [docs/troubleshooting.md](docs/troubleshooting.md), and
+[THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md).
 
 Recommended first settings:
 
@@ -113,13 +124,17 @@ powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\scripts\package_releas
 The script defaults to `RelWithDebInfo` when available, falls back to `Release` when no build config is supplied, validates required files, rejects unexpected files and accidental build artifacts such as `.pdb` or `.exe` files, verifies the zip layout, and writes a SHA256 checksum. Output is written to `out\release`, for example:
 
 ```text
-out\release\obs-auto-framing-v0.1.1-windows-x64.zip
-out\release\obs-auto-framing-v0.1.1-windows-x64.zip.sha256
+out\release\obs-auto-framing-v0.2.0-windows-x64.zip
+out\release\obs-auto-framing-v0.2.0-windows-x64.zip.sha256
+out\release\obs-auto-framing-v0.2.0-windows-x64-installer.exe
+out\release\obs-auto-framing-v0.2.0-windows-x64-installer.exe.sha256
 ```
 
 YOLOX-Tiny is bundled by default. Add `-IncludeNano` for the lightweight fallback model or `-IncludeSmall` for YOLOX-S. YOLOX-S can be more accurate, but it is larger and slower on CPU.
 
-Use [docs/release_checklist.md](docs/release_checklist.md) for the final v0.1.1 Preview manual QA pass.
+Use [docs/release_checklist.md](docs/release_checklist.md) for the final v0.2.0 Preview QA pass.
+Building the installer requires Inno Setup 6.7.3 or newer; Inno Setup 7 is not required for v0.2.0. The installer
+explicitly enables RedirectionGuard as defense-in-depth against unprivileged path redirection.
 
 ## GitHub Release
 
@@ -129,13 +144,17 @@ Release zips are generated artifacts. They stay ignored by git and are attached 
 .\scripts\publish_release.ps1
 ```
 
-The default dry run validates the zip, checksum, release notes, GitHub CLI install, and GitHub authentication, then prints the `gh release create` command. To publish the prerelease after review:
+The default dry run validates the ZIP, installer, both checksums, release notes, and GitHub CLI authentication, then
+prints the `gh release create` command with the exact `main` SHA in `--target` and the public repository in `--repo`.
+Use `-NoAuthCheck` only for a non-publishing dry run. A publishing run fetches `origin main --tags` and verifies the
+direct remote `main` SHA. After the installer PR is merged, rebuild and test exact artifacts from `main`, then create
+a draft prerelease for inspection:
 
 ```powershell
-.\scripts\publish_release.ps1 -Publish
+.\scripts\publish_release.ps1 -Publish -Draft
 ```
 
-An installer may be added later after the preview zip install flow is validated.
+Do not publish or tag from a feature branch. Publish the inspected draft only after final maintainer review.
 
 ## License
 
