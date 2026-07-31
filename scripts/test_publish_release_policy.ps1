@@ -18,7 +18,7 @@ $sha = "1234567890abcdef1234567890abcdef12345678"
 $assets = @("installer.exe", "installer.exe.sha256", "package.zip", "package.zip.sha256")
 $arguments = @(New-ReleaseCreateArguments `
     -Repository "moorwp-jpg/Auto-Framing-For-OBS" -Tag "v0.2.0" `
-    -Title "OBS Auto Framing v0.2.0 Preview" -NotesPath "notes.md" `
+    -Title "Auto Framing For OBS v0.2.0 Preview" -NotesPath "notes.md" `
     -Assets $assets -TargetSha $sha -Draft)
 
 foreach ($required in @(

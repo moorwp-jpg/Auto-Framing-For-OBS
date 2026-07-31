@@ -2,7 +2,7 @@
 
 ## Repository purpose
 
-This is the stable public preview repository for OBS Auto Framing. Experimental work is developed separately and
+This is the stable public preview repository for Auto Framing For OBS. Experimental work is developed separately and
 must not be mentioned, copied, or enabled accidentally. Public changes use conservative defaults and dependencies
 that can be distributed publicly.
 

@@ -1,7 +1,7 @@
-; Public OBS Auto Framing installer. Input is the validated public release staging directory.
+; Public Auto Framing For OBS installer. Input is the validated public release staging directory.
 
 #define ExpectedAppVersion "0.2.0"
-#define AppName "OBS Auto Framing"
+#define AppName "Auto Framing For OBS"
 #define PluginName "obs-auto-framing"
 #define StableAppId "6E0D52B7-3F4C-4B5F-8F0A-8A1EA8E43E46"
 
@@ -120,7 +120,7 @@ end;
 function NetworkRootErrorText(): String;
 begin
   Result :=
-    'OBS Auto Framing can only be installed into a local OBS Studio directory.' +
+    'Auto Framing For OBS can only be installed into a local OBS Studio directory.' +
     '' + #13#10 + #13#10 +
     'UNC paths and mapped network drives are not supported.' + #13#10 +
     'Select a local OBS root containing bin\64bit\obs64.exe.';
@@ -199,7 +199,7 @@ begin
         mbCriticalError, MB_OK)
     else
       MsgBox(
-        'OBS Studio is running. Close OBS before installing, upgrading, repairing, or uninstalling OBS Auto Framing.',
+        'OBS Studio is running. Close OBS before installing, upgrading, repairing, or uninstalling Auto Framing For OBS.',
         mbCriticalError, MB_OK);
   end;
 end;
@@ -391,7 +391,7 @@ begin
         if CompareText(CurrentHash, PayloadInstalledHash(Index)) <> 0 then
         begin
           Result :=
-            'An installer-owned OBS Auto Framing file was modified:' + #13#10 +
+            'An installer-owned Auto Framing For OBS file was modified:' + #13#10 +
             PayloadRelativePath(Index) + #13#10 + #13#10 +
             'For safety, setup will not change any payload files.';
           exit;
@@ -437,7 +437,7 @@ begin
     if CheckFailed then
       Result := 'Setup could not safely determine whether OBS Studio is running. Close OBS and verify Windows PowerShell process queries, then try again.'
     else
-      Result := 'OBS Studio is running. Close OBS before installing, upgrading, or repairing OBS Auto Framing.';
+      Result := 'OBS Studio is running. Close OBS before installing, upgrading, or repairing Auto Framing For OBS.';
     exit;
   end;
   if not ObsRootLocationIsLocal(WizardDirValue()) then
@@ -454,7 +454,7 @@ begin
     WizardDirValue(), ManifestExists, ManifestFailureReason) then
   begin
     Result :=
-      'The existing OBS Auto Framing ownership manifest is incomplete or invalid.' +
+      'The existing Auto Framing For OBS ownership manifest is incomplete or invalid.' +
       '' + #13#10 + #13#10 +
       ManifestFailureReason + #13#10 + #13#10 +
       'For safety, setup will not change any payload files. Review the setup log or use a separate OBS root.';

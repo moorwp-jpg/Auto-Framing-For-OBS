@@ -158,7 +158,7 @@ Do not publish or tag from a feature branch. Publish the inspected draft only af
 
 ## License
 
-This project is licensed under the MIT License. See [LICENSE](LICENSE).
+This project is licensed under the GNU General Public License version 2 or (at your option) any later version (`GPL-2.0-or-later`). See [LICENSE](LICENSE).
 
 To build only the core tracker and crop-controller tests without OBS development files:
 

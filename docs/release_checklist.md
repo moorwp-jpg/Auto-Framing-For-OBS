@@ -54,5 +54,5 @@ Use this checklist first on the release-preparation PR, then repeat it against a
 - [ ] Rebuild and retest exact final artifacts from merged `main`.
 - [ ] Confirm publishing fetches `origin main --tags` and direct remote `main` equals the validated local `HEAD`.
 - [ ] Run `scripts\publish_release.ps1 -Publish -Draft`.
-- [ ] Inspect tag `v0.2.0`, title `OBS Auto Framing v0.2.0 Preview`, prerelease status, notes, sizes, and all hashes.
+- [ ] Inspect tag `v0.2.0`, title `Auto Framing For OBS v0.2.0 Preview`, prerelease status, notes, sizes, and all hashes.
 - [ ] Publish the draft only after final maintainer review.
