@@ -3,29 +3,46 @@ param()
 
 $ErrorActionPreference = "Stop"
 
-function Get-InstallerExpectedRelativePaths {
-    return @(
-        "obs-plugins\64bit\obs-auto-framing.dll",
-        "obs-plugins\64bit\onnxruntime.dll",
-        "data\obs-plugins\obs-auto-framing\effects\crop.effect",
-        "data\obs-plugins\obs-auto-framing\locale\en-US.ini",
-        "data\obs-plugins\obs-auto-framing\models\yolox_tiny.onnx",
-        "docs\install.md",
-        "docs\troubleshooting.md",
-        "LICENSE",
-        "README.md",
-        "SECURITY.md",
-        "THIRD_PARTY_NOTICES.md"
+function Get-InstallerPolicyPath {
+    return [System.IO.Path]::GetFullPath(
+        (Join-Path (Join-Path $PSScriptRoot "..") "installer\payload-policy.json"))
+}
+
+function Resolve-InstallerTargetPath {
+    param(
+        [Parameter(Mandatory = $true)][string]$ObsRoot,
+        [Parameter(Mandatory = $true)][string]$RelativePath
     )
+
+    if ([string]::IsNullOrWhiteSpace($RelativePath) -or
+        [System.IO.Path]::IsPathRooted($RelativePath) -or
+        $RelativePath.StartsWith('\') -or
+        $RelativePath.StartsWith('/') -or
+        $RelativePath.Contains(':')) {
+        throw "Installer path must be a nonempty relative path: $RelativePath"
+    }
+
+    $segments = @($RelativePath.Replace('/', '\').Split('\'))
+    if ($segments.Count -eq 0 -or
+        @($segments | Where-Object {
+            [string]::IsNullOrWhiteSpace($_) -or $_ -eq "." -or $_ -eq ".."
+        }).Count -gt 0) {
+        throw "Installer path contains invalid or traversing segments: $RelativePath"
+    }
+
+    $rootFull = [System.IO.Path]::GetFullPath($ObsRoot).TrimEnd('\', '/')
+    $targetFull = [System.IO.Path]::GetFullPath((Join-Path $rootFull ($segments -join '\')))
+    $rootPrefix = $rootFull + [System.IO.Path]::DirectorySeparatorChar
+    if (-not $targetFull.StartsWith($rootPrefix, [System.StringComparison]::OrdinalIgnoreCase)) {
+        throw "Installer path escapes the OBS root: $RelativePath"
+    }
+    return $targetFull
 }
 
 function ConvertTo-InstallerRelativePath {
     param(
-        [Parameter(Mandatory = $true)]
-        [string]$Root,
-
-        [Parameter(Mandatory = $true)]
-        [string]$Path
+        [Parameter(Mandatory = $true)][string]$Root,
+        [Parameter(Mandatory = $true)][string]$Path
     )
 
     $rootFull = [System.IO.Path]::GetFullPath($Root).TrimEnd('\', '/')
@@ -34,76 +51,110 @@ function ConvertTo-InstallerRelativePath {
     if (-not $pathFull.StartsWith($rootPrefix, [System.StringComparison]::OrdinalIgnoreCase)) {
         throw "Path is outside the expected root: $Path"
     }
-
     return $pathFull.Substring($rootPrefix.Length).Replace('/', '\')
 }
 
-function Resolve-InstallerTargetPath {
-    param(
-        [Parameter(Mandatory = $true)]
-        [string]$ObsRoot,
+function Get-InstallerPayloadDescriptor {
+    param([string]$PolicyPath = (Get-InstallerPolicyPath))
 
-        [Parameter(Mandatory = $true)]
-        [string]$RelativePath
-    )
-
-    if ([string]::IsNullOrWhiteSpace($RelativePath)) {
-        throw "Installer manifest path is empty."
+    if (-not (Test-Path -LiteralPath $PolicyPath -PathType Leaf)) {
+        throw "Installer payload policy not found: $PolicyPath"
     }
-    if ([System.IO.Path]::IsPathRooted($RelativePath) -or
-        $RelativePath.StartsWith('\') -or
-        $RelativePath.StartsWith('/') -or
-        $RelativePath.Contains(':')) {
-        throw "Installer manifest path must be relative: $RelativePath"
+    $document = Get-Content -Raw -LiteralPath $PolicyPath | ConvertFrom-Json
+    if ($document.schemaVersion -ne 1) {
+        throw "Unsupported installer payload policy schema: $($document.schemaVersion)"
+    }
+    if ([string]::IsNullOrWhiteSpace([string]$document.previousHashSource.release) -or
+        [string]$document.previousHashSource.asset -cne
+            "obs-auto-framing-v0.1.1-windows-x64.zip" -or
+        [string]$document.previousHashSource.assetSHA256 -notmatch '^[0-9a-f]{64}$') {
+        throw "Installer payload policy is missing the verified v0.1.1 hash source."
     }
 
-    $segments = @($RelativePath.Replace('/', '\').Split('\'))
-    if ($segments.Count -eq 0 -or
-        @($segments | Where-Object { [string]::IsNullOrWhiteSpace($_) -or $_ -eq "." -or $_ -eq ".." }).Count -gt 0) {
-        throw "Installer manifest path contains invalid or traversing segments: $RelativePath"
+    $items = @($document.payload)
+    if ($items.Count -ne 11) {
+        throw "Installer payload policy must contain exactly 11 files; found $($items.Count)."
     }
 
-    $rootFull = [System.IO.Path]::GetFullPath($ObsRoot).TrimEnd('\', '/')
-    $targetFull = [System.IO.Path]::GetFullPath((Join-Path $rootFull ($segments -join '\')))
-    $rootPrefix = $rootFull + [System.IO.Path]::DirectorySeparatorChar
-    if (-not $targetFull.StartsWith($rootPrefix, [System.StringComparison]::OrdinalIgnoreCase)) {
-        throw "Installer manifest path escapes the OBS root: $RelativePath"
+    $ids = [System.Collections.Generic.HashSet[string]]::new(
+        [System.StringComparer]::OrdinalIgnoreCase)
+    $paths = [System.Collections.Generic.HashSet[string]]::new(
+        [System.StringComparer]::OrdinalIgnoreCase)
+    foreach ($item in $items) {
+        foreach ($property in @(
+            "id", "stagingPath", "relativePath", "shared",
+            "recognizedManualUpgrade", "removeOnUninstall", "previousHashes"
+        )) {
+            if ($null -eq $item.PSObject.Properties[$property]) {
+                throw "Installer payload item is missing '$property'."
+            }
+        }
+        if ([string]::IsNullOrWhiteSpace([string]$item.id) -or
+            -not $ids.Add([string]$item.id)) {
+            throw "Installer payload IDs must be nonempty and unique: $($item.id)"
+        }
+        if (-not $paths.Add([string]$item.relativePath)) {
+            throw "Installer payload destination paths must be unique: $($item.relativePath)"
+        }
+        $null = Resolve-InstallerTargetPath -ObsRoot ([System.IO.Path]::GetTempPath()) `
+            -RelativePath ([string]$item.stagingPath)
+        $null = Resolve-InstallerTargetPath -ObsRoot ([System.IO.Path]::GetTempPath()) `
+            -RelativePath ([string]$item.relativePath)
+        foreach ($previous in @($item.previousHashes)) {
+            if ([string]$previous.version -notmatch '^\d+\.\d+\.\d+$' -or
+                [string]$previous.sha256 -notmatch '^[0-9a-f]{64}$') {
+                throw "Invalid recognized manual-upgrade hash for '$($item.id)'."
+            }
+        }
     }
+    return $items
+}
 
-    return $targetFull
+function Get-InstallerExpectedRelativePaths {
+    return @(Get-InstallerPayloadDescriptor | ForEach-Object { [string]$_.stagingPath })
+}
+
+function Get-ResolvedInstallerPayloadPolicy {
+    param([Parameter(Mandatory = $true)][string]$StagingRoot)
+
+    $root = (Resolve-Path -LiteralPath $StagingRoot).Path
+    return @(Get-InstallerPayloadDescriptor | ForEach-Object {
+        $source = Resolve-InstallerTargetPath -ObsRoot $root -RelativePath $_.stagingPath
+        [pscustomobject]@{
+            Id = [string]$_.id
+            StagingPath = [string]$_.stagingPath
+            RelativePath = [string]$_.relativePath
+            Shared = [bool]$_.shared
+            RecognizedManualUpgrade = [bool]$_.recognizedManualUpgrade
+            RemoveOnUninstall = [bool]$_.removeOnUninstall
+            PreviousHashes = @($_.previousHashes | ForEach-Object {
+                ([string]$_.sha256).ToLowerInvariant()
+            })
+            InstalledHash = (Get-FileHash -Algorithm SHA256 -LiteralPath $source).Hash.ToLowerInvariant()
+        }
+    })
 }
 
 function Test-ObsInstallationRoot {
-    param(
-        [Parameter(Mandatory = $true)]
-        [string]$ObsRoot
-    )
-
+    param([Parameter(Mandatory = $true)][string]$ObsRoot)
     try {
         $rootFull = [System.IO.Path]::GetFullPath($ObsRoot)
     }
     catch {
         return $false
     }
-
     return (Test-Path -LiteralPath (Join-Path $rootFull "bin\64bit\obs64.exe") -PathType Leaf)
 }
 
 function Assert-InstallerStaging {
-    param(
-        [Parameter(Mandatory = $true)]
-        [string]$StagingRoot
-    )
+    param([Parameter(Mandatory = $true)][string]$StagingRoot)
 
     if (-not (Test-Path -LiteralPath $StagingRoot -PathType Container)) {
         throw "Installer staging directory not found: $StagingRoot"
     }
-
     $root = (Resolve-Path -LiteralPath $StagingRoot).Path
     $expected = @(Get-InstallerExpectedRelativePaths)
-    $expectedNormalized = @($expected | ForEach-Object { $_.Replace('/', '\') })
-
-    foreach ($relativePath in $expectedNormalized) {
+    foreach ($relativePath in $expected) {
         $resolved = Resolve-InstallerTargetPath -ObsRoot $root -RelativePath $relativePath
         if (-not (Test-Path -LiteralPath $resolved -PathType Leaf)) {
             throw "Installer policy failed; missing required file: $relativePath"
@@ -114,7 +165,7 @@ function Assert-InstallerStaging {
     $relativeFiles = @($files | ForEach-Object {
         ConvertTo-InstallerRelativePath -Root $root -Path $_.FullName
     })
-    $unexpected = @($relativeFiles | Where-Object { $expectedNormalized -notcontains $_ })
+    $unexpected = @($relativeFiles | Where-Object { $expected -notcontains $_ })
     if ($unexpected.Count -gt 0) {
         throw "Installer policy failed; unexpected files: $($unexpected -join ', ')"
     }
@@ -124,14 +175,12 @@ function Assert-InstallerStaging {
         ".ilk", ".iobj", ".ipdb", ".iss", ".lib", ".obj", ".pdb", ".ps1", ".pt",
         ".py", ".sha256", ".tar", ".zip"
     )
-    $blocked = @($files | Where-Object {
-        $blockedExtensions -contains $_.Extension.ToLowerInvariant()
-    })
+    $blocked = @($files | Where-Object { $blockedExtensions -contains $_.Extension.ToLowerInvariant() })
     if ($blocked.Count -gt 0) {
-        $blockedRelative = @($blocked | ForEach-Object {
-            ConvertTo-InstallerRelativePath -Root $root -Path $_.FullName
-        })
-        throw "Installer policy failed; source, archive, or build files are forbidden: $($blockedRelative -join ', ')"
+        throw "Installer policy failed; source, archive, or build files are forbidden: " +
+            (@($blocked | ForEach-Object {
+                ConvertTo-InstallerRelativePath -Root $root -Path $_.FullName
+            }) -join ', ')
     }
 
     $privateNamePattern = '(?i)(^|[\\/])(?:yolo26[^\\/]*|[^\\/]*pose[^\\/]*|private[^\\/]*)($|[\\/])'
@@ -139,53 +188,253 @@ function Assert-InstallerStaging {
     if ($privatePaths.Count -gt 0) {
         throw "Installer policy failed; private model, pose, or notice names are forbidden: $($privatePaths -join ', ')"
     }
-
-    $models = @(Get-ChildItem -LiteralPath (Join-Path $root "data\obs-plugins\obs-auto-framing\models") -File)
+    $models = @(Get-ChildItem -LiteralPath (
+        Join-Path $root "data\obs-plugins\obs-auto-framing\models") -File)
     if ($models.Count -ne 1 -or $models[0].Name -cne "yolox_tiny.onnx") {
         throw "Installer policy failed; the normal installer must contain only yolox_tiny.onnx."
     }
 }
 
-function Assert-ReleaseChecksum {
+function Test-InstallerOwnershipManifest {
     param(
-        [Parameter(Mandatory = $true)]
-        [string]$ArtifactPath,
-
-        [Parameter(Mandatory = $true)]
-        [string]$ChecksumPath
+        [Parameter(Mandatory = $true)]$Manifest,
+        [Parameter(Mandatory = $true)][object[]]$Policy,
+        [Parameter(Mandatory = $true)][string]$ObsRoot,
+        [Parameter(Mandatory = $true)][string]$InstalledVersion
     )
 
+    function Invalid([string]$Reason) {
+        return [pscustomobject]@{ Valid = $false; Reason = $Reason; Records = @() }
+    }
+
+    if ($null -eq $Manifest.Metadata -or $null -eq $Manifest.Files) {
+        return Invalid "Manifest metadata or file records are missing."
+    }
+    $metadata = $Manifest.Metadata
+    $rootExpected = [System.IO.Path]::GetFullPath($ObsRoot).TrimEnd('\', '/')
+    try {
+        $rootRecorded = [System.IO.Path]::GetFullPath([string]$metadata.ObsRoot).TrimEnd('\', '/')
+    }
+    catch {
+        return Invalid "Manifest OBS root is invalid."
+    }
+    if ([string]$metadata.SchemaVersion -cne "1" -or
+        [string]$metadata.InstalledVersion -cne $InstalledVersion -or
+        [string]$metadata.FileCount -cne ([string]$Policy.Count) -or
+        $metadata.Complete -isnot [bool] -or -not $metadata.Complete -or
+        $rootRecorded -ine $rootExpected) {
+        return Invalid "Manifest metadata is incomplete or inconsistent."
+    }
+
+    $records = @($Manifest.Files)
+    if ($records.Count -ne $Policy.Count) {
+        return Invalid "Manifest file count does not match the compiled payload."
+    }
+    for ($index = 0; $index -lt $Policy.Count; $index++) {
+        $record = $records[$index]
+        $expected = $Policy[$index]
+        if ([string]$record.Id -cne $expected.Id -or
+            [string]$record.RelativePath -cne $expected.RelativePath -or
+            [string]$record.InstalledVersion -cne $InstalledVersion -or
+            [string]$record.InstalledSHA256 -cne $expected.InstalledHash -or
+            $record.Shared -isnot [bool] -or $record.Shared -ne $expected.Shared -or
+            $record.RemoveOnUninstall -isnot [bool] -or
+            $record.RemoveOnUninstall -ne $expected.RemoveOnUninstall -or
+            $record.CreatedByInstaller -isnot [bool] -or
+            $record.ExistedBefore -isnot [bool] -or
+            ([string]$record.OriginalSHA256 -ne "" -and
+                [string]$record.OriginalSHA256 -notmatch '^[0-9a-f]{64}$')) {
+            return Invalid "Manifest file record $index does not match the compiled payload."
+        }
+        try {
+            $null = Resolve-InstallerTargetPath -ObsRoot $ObsRoot `
+                -RelativePath ([string]$record.RelativePath)
+        }
+        catch {
+            return Invalid "Manifest file record $index contains an unsafe path."
+        }
+    }
+    return [pscustomobject]@{ Valid = $true; Reason = ""; Records = $records }
+}
+
+function Get-InstallerPreflightPlan {
+    param(
+        [Parameter(Mandatory = $true)][string]$ObsRoot,
+        [Parameter(Mandatory = $true)][object[]]$Policy,
+        [Parameter(Mandatory = $true)][string]$InstalledVersion,
+        $ExistingManifest
+    )
+
+    $validatedManifest = $null
+    if ($null -ne $ExistingManifest) {
+        $validatedManifest = Test-InstallerOwnershipManifest -Manifest $ExistingManifest `
+            -Policy $Policy -ObsRoot $ObsRoot -InstalledVersion $InstalledVersion
+        if (-not $validatedManifest.Valid) {
+            throw "Existing installer manifest is invalid; no payload files may be changed. $($validatedManifest.Reason)"
+        }
+    }
+
+    $plan = [System.Collections.Generic.List[object]]::new()
+    for ($index = 0; $index -lt $Policy.Count; $index++) {
+        $item = $Policy[$index]
+        $target = Resolve-InstallerTargetPath -ObsRoot $ObsRoot -RelativePath $item.RelativePath
+        if (-not (Test-Path -LiteralPath $target -PathType Leaf)) {
+            $plan.Add([pscustomobject]@{
+                Id = $item.Id; Action = "InstallNew"; CreatedByInstaller = $true
+                ExistedBefore = $false; OriginalSHA256 = ""; TargetPath = $target
+            })
+            continue
+        }
+
+        $currentHash = (Get-FileHash -Algorithm SHA256 -LiteralPath $target).Hash.ToLowerInvariant()
+        if ($null -ne $validatedManifest) {
+            $record = $validatedManifest.Records[$index]
+            if ($currentHash -cne $item.InstalledHash) {
+                throw "Installer-owned payload '$($item.RelativePath)' was modified; no files may be changed."
+            }
+            $plan.Add([pscustomobject]@{
+                Id = $item.Id; Action = "CarryPriorInstallerOwnership"
+                CreatedByInstaller = [bool]$record.CreatedByInstaller
+                ExistedBefore = [bool]$record.ExistedBefore
+                OriginalSHA256 = [string]$record.OriginalSHA256
+                TargetPath = $target
+            })
+            continue
+        }
+
+        $recognizedCurrentPackage =
+            $item.RecognizedManualUpgrade -and $currentHash -ceq $item.InstalledHash
+        $recognizedPrevious =
+            $item.RecognizedManualUpgrade -and $item.PreviousHashes -ccontains $currentHash
+        if (-not $recognizedCurrentPackage -and -not $recognizedPrevious) {
+            throw "Unknown or modified payload '$($item.RelativePath)' already exists; no files may be changed."
+        }
+
+        $plan.Add([pscustomobject]@{
+            Id = $item.Id
+            Action = if ($item.Shared -and $currentHash -ceq $item.InstalledHash) {
+                "ReuseShared"
+            }
+            else {
+                "UpgradeRecognizedManual"
+            }
+            CreatedByInstaller = -not $item.Shared
+            ExistedBefore = $true
+            OriginalSHA256 = $currentHash
+            TargetPath = $target
+        })
+    }
+    return @($plan)
+}
+
+function New-InstallerOwnershipManifest {
+    param(
+        [Parameter(Mandatory = $true)][string]$ObsRoot,
+        [Parameter(Mandatory = $true)][object[]]$Policy,
+        [Parameter(Mandatory = $true)][object[]]$Plan,
+        [Parameter(Mandatory = $true)][string]$InstalledVersion
+    )
+
+    $files = for ($index = 0; $index -lt $Policy.Count; $index++) {
+        [pscustomobject]@{
+            Id = $Policy[$index].Id
+            RelativePath = $Policy[$index].RelativePath
+            InstalledVersion = $InstalledVersion
+            InstalledSHA256 = $Policy[$index].InstalledHash
+            CreatedByInstaller = [bool]$Plan[$index].CreatedByInstaller
+            ExistedBefore = [bool]$Plan[$index].ExistedBefore
+            OriginalSHA256 = [string]$Plan[$index].OriginalSHA256
+            Shared = [bool]$Policy[$index].Shared
+            RemoveOnUninstall = [bool]$Policy[$index].RemoveOnUninstall
+        }
+    }
+    return [pscustomobject]@{
+        Metadata = [pscustomobject]@{
+            SchemaVersion = "1"; InstalledVersion = $InstalledVersion
+            ObsRoot = [System.IO.Path]::GetFullPath($ObsRoot).TrimEnd('\', '/')
+            FileCount = [string]$Policy.Count; Complete = $true
+        }
+        Files = @($files)
+    }
+}
+
+function Get-InstallerUninstallPlan {
+    param(
+        [Parameter(Mandatory = $true)][string]$ObsRoot,
+        [Parameter(Mandatory = $true)][object[]]$Policy,
+        [Parameter(Mandatory = $true)][string]$InstalledVersion,
+        [Parameter(Mandatory = $true)]$Manifest
+    )
+
+    $validation = Test-InstallerOwnershipManifest -Manifest $Manifest -Policy $Policy `
+        -ObsRoot $ObsRoot -InstalledVersion $InstalledVersion
+    if (-not $validation.Valid) {
+        return @($Policy | ForEach-Object {
+            [pscustomobject]@{
+                Id = $_.Id; Action = "PreserveInvalidManifest"
+                Reason = "Manifest invalid: $($validation.Reason)"
+                Path = Resolve-InstallerTargetPath -ObsRoot $ObsRoot -RelativePath $_.RelativePath
+            }
+        })
+    }
+
+    $result = for ($index = 0; $index -lt $Policy.Count; $index++) {
+        $item = $Policy[$index]
+        $record = $validation.Records[$index]
+        $target = Resolve-InstallerTargetPath -ObsRoot $ObsRoot -RelativePath $item.RelativePath
+        if (-not (Test-Path -LiteralPath $target -PathType Leaf)) {
+            [pscustomobject]@{ Id = $item.Id; Action = "Absent"; Reason = "Already absent."; Path = $target }
+            continue
+        }
+        $currentHash = (Get-FileHash -Algorithm SHA256 -LiteralPath $target).Hash.ToLowerInvariant()
+        if ($currentHash -cne $item.InstalledHash) {
+            [pscustomobject]@{
+                Id = $item.Id; Action = "PreserveModified"
+                Reason = "Current hash differs from compiled installed hash."; Path = $target
+            }
+        }
+        elseif (-not $record.CreatedByInstaller -or -not $item.RemoveOnUninstall) {
+            [pscustomobject]@{
+                Id = $item.Id; Action = "PreservePreExisting"
+                Reason = "The installer did not create this file."; Path = $target
+            }
+        }
+        else {
+            [pscustomobject]@{
+                Id = $item.Id; Action = "RemoveOwned"
+                Reason = "Compiled identity, installed hash, and ownership agree."; Path = $target
+            }
+        }
+    }
+    return @($result)
+}
+
+function Assert-ReleaseChecksum {
+    param(
+        [Parameter(Mandatory = $true)][string]$ArtifactPath,
+        [Parameter(Mandatory = $true)][string]$ChecksumPath
+    )
     if (-not (Test-Path -LiteralPath $ArtifactPath -PathType Leaf)) {
         throw "Release artifact not found: $ArtifactPath"
     }
     if (-not (Test-Path -LiteralPath $ChecksumPath -PathType Leaf)) {
         throw "Release checksum not found: $ChecksumPath"
     }
-
     $checksumText = (Get-Content -Raw -LiteralPath $ChecksumPath).Trim()
     $expectedName = [System.IO.Path]::GetFileName($ArtifactPath)
-    if ($checksumText -notmatch '^([0-9a-fA-F]{64}) \*(.+)$') {
-        throw "Invalid SHA-256 checksum format: $ChecksumPath"
+    if ($checksumText -notmatch '^([0-9a-fA-F]{64}) \*(.+)$' -or $Matches[2] -cne $expectedName) {
+        throw "Invalid SHA-256 checksum file: $ChecksumPath"
     }
-    if ($Matches[2] -cne $expectedName) {
-        throw "Checksum names '$($Matches[2])', expected '$expectedName'."
-    }
-
-    $actualHash = (Get-FileHash -Algorithm SHA256 -LiteralPath $ArtifactPath).Hash
-    if ($actualHash -ine $Matches[1]) {
+    if ((Get-FileHash -Algorithm SHA256 -LiteralPath $ArtifactPath).Hash -ine $Matches[1]) {
         throw "SHA-256 mismatch for $expectedName."
     }
 }
 
 function Assert-StagingMatchesZip {
     param(
-        [Parameter(Mandatory = $true)]
-        [string]$StagingRoot,
-
-        [Parameter(Mandatory = $true)]
-        [string]$ZipPath
+        [Parameter(Mandatory = $true)][string]$StagingRoot,
+        [Parameter(Mandatory = $true)][string]$ZipPath
     )
-
     Add-Type -AssemblyName System.IO.Compression.FileSystem
     $root = (Resolve-Path -LiteralPath $StagingRoot).Path
     $archive = [System.IO.Compression.ZipFile]::OpenRead($ZipPath)
@@ -196,98 +445,26 @@ function Assert-StagingMatchesZip {
         $stagedNames = @($stagedFiles | ForEach-Object {
             ConvertTo-InstallerRelativePath -Root $root -Path $_.FullName
         })
-
         if (@($entryNames | Where-Object { $stagedNames -notcontains $_ }).Count -gt 0 -or
             @($stagedNames | Where-Object { $entryNames -notcontains $_ }).Count -gt 0) {
             throw "Validated ZIP entries do not match installer staging."
         }
-
         foreach ($entry in $entries) {
             $stagedPath = Resolve-InstallerTargetPath -ObsRoot $root -RelativePath $entry.FullName
             $stream = $entry.Open()
             try {
                 $sha = [System.Security.Cryptography.SHA256]::Create()
                 try {
-                    $entryHash = [System.BitConverter]::ToString($sha.ComputeHash($stream)).Replace("-", "")
+                    $entryHash = [System.BitConverter]::ToString(
+                        $sha.ComputeHash($stream)).Replace("-", "")
                 }
-                finally {
-                    $sha.Dispose()
-                }
+                finally { $sha.Dispose() }
             }
-            finally {
-                $stream.Dispose()
-            }
-
-            $stagedHash = (Get-FileHash -Algorithm SHA256 -LiteralPath $stagedPath).Hash
-            if ($entryHash -ine $stagedHash) {
+            finally { $stream.Dispose() }
+            if ($entryHash -ine (Get-FileHash -Algorithm SHA256 -LiteralPath $stagedPath).Hash) {
                 throw "Validated ZIP content differs from installer staging: $($entry.FullName)"
             }
         }
     }
-    finally {
-        $archive.Dispose()
-    }
-}
-
-function Get-SharedRuntimePolicy {
-    param(
-        [Parameter(Mandatory = $true)]
-        [string]$ObsRoot,
-
-        [Parameter(Mandatory = $true)]
-        [string]$BundledRuntimePath
-    )
-
-    $target = Resolve-InstallerTargetPath -ObsRoot $ObsRoot -RelativePath "obs-plugins\64bit\onnxruntime.dll"
-    $bundledHash = (Get-FileHash -Algorithm SHA256 -LiteralPath $BundledRuntimePath).Hash.ToLowerInvariant()
-    if (-not (Test-Path -LiteralPath $target -PathType Leaf)) {
-        return [pscustomobject]@{
-            Action = "Install"
-            ExistedBefore = $false
-            OriginalHash = ""
-            InstalledHash = $bundledHash
-        }
-    }
-
-    $originalHash = (Get-FileHash -Algorithm SHA256 -LiteralPath $target).Hash.ToLowerInvariant()
-    return [pscustomobject]@{
-        Action = if ($originalHash -eq $bundledHash) { "Reuse" } else { "RejectConflict" }
-        ExistedBefore = $true
-        OriginalHash = $originalHash
-        InstalledHash = $bundledHash
-    }
-}
-
-function Get-UninstallOwnershipDecision {
-    param(
-        [Parameter(Mandatory = $true)]
-        [string]$ObsRoot,
-
-        [Parameter(Mandatory = $true)]
-        [string]$RelativePath,
-
-        [Parameter(Mandatory = $true)]
-        [string]$InstalledHash,
-
-        [Parameter(Mandatory = $true)]
-        [bool]$CreatedByInstaller,
-
-        [Parameter(Mandatory = $true)]
-        [bool]$SharedRuntime
-    )
-
-    $target = Resolve-InstallerTargetPath -ObsRoot $ObsRoot -RelativePath $RelativePath
-    if (-not (Test-Path -LiteralPath $target -PathType Leaf)) {
-        return [pscustomobject]@{ Action = "Absent"; Reason = "File is already absent."; Path = $target }
-    }
-
-    $currentHash = (Get-FileHash -Algorithm SHA256 -LiteralPath $target).Hash
-    if ($currentHash -ine $InstalledHash) {
-        return [pscustomobject]@{ Action = "Preserve"; Reason = "File changed after installation."; Path = $target }
-    }
-    if ($SharedRuntime -and -not $CreatedByInstaller) {
-        return [pscustomobject]@{ Action = "Preserve"; Reason = "Shared runtime existed before installation."; Path = $target }
-    }
-
-    return [pscustomobject]@{ Action = "Remove"; Reason = "Installed hash and ownership match."; Path = $target }
+    finally { $archive.Dispose() }
 }

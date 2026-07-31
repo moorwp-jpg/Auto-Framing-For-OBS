@@ -48,6 +48,85 @@ function Resolve-InnoSetupCompiler {
     throw "Inno Setup 6 (ISCC.exe) was not found. Install Inno Setup 6 from https://jrsoftware.org/isdl.php or pass -InnoSetupPath."
 }
 
+function ConvertTo-InnoString {
+    param([Parameter(Mandatory = $true)][string]$Value)
+    return "'" + $Value.Replace("'", "''") + "'"
+}
+
+function Get-InnoCaseFunction {
+    param(
+        [Parameter(Mandatory = $true)][string]$Name,
+        [Parameter(Mandatory = $true)][string]$ReturnType,
+        [Parameter(Mandatory = $true)][object[]]$Policy,
+        [Parameter(Mandatory = $true)][scriptblock]$Value
+    )
+
+    $result = [System.Collections.Generic.List[string]]::new()
+    $result.Add("function ${Name}(Index: Integer): ${ReturnType};")
+    $result.Add("begin")
+    $result.Add("  case Index of")
+    for ($index = 0; $index -lt $Policy.Count; $index++) {
+        $result.Add("    ${index}: Result := $(& $Value $Policy[$index]);")
+    }
+    $result.Add("  else")
+    $result.Add("    RaiseException('Invalid compiled payload index: ' + IntToStr(Index));")
+    $result.Add("  end;")
+    $result.Add("end;")
+    $result.Add("")
+    return @($result)
+}
+
+function New-InnoPayloadPolicyInclude {
+    param(
+        [Parameter(Mandatory = $true)][object[]]$Policy,
+        [Parameter(Mandatory = $true)][string]$Path
+    )
+
+    $lines = [System.Collections.Generic.List[string]]::new()
+    $lines.Add("{ Generated from installer/payload-policy.json and validated staging. }")
+    $lines.Add("const")
+    $lines.Add("  CompiledPayloadCount = $($Policy.Count);")
+    $lines.Add("")
+    $lines.AddRange([string[]]@(Get-InnoCaseFunction -Name "PayloadId" -ReturnType "String" `
+        -Policy $Policy -Value { param($item) ConvertTo-InnoString $item.Id }))
+    $lines.AddRange([string[]]@(Get-InnoCaseFunction -Name "PayloadRelativePath" `
+        -ReturnType "String" -Policy $Policy `
+        -Value { param($item) ConvertTo-InnoString $item.RelativePath }))
+    $lines.AddRange([string[]]@(Get-InnoCaseFunction -Name "PayloadInstalledHash" `
+        -ReturnType "String" -Policy $Policy `
+        -Value { param($item) ConvertTo-InnoString $item.InstalledHash }))
+    $lines.AddRange([string[]]@(Get-InnoCaseFunction -Name "PayloadShared" `
+        -ReturnType "Boolean" -Policy $Policy `
+        -Value { param($item) if ($item.Shared) { "True" } else { "False" } }))
+    $lines.AddRange([string[]]@(Get-InnoCaseFunction -Name "PayloadRemoveOnUninstall" `
+        -ReturnType "Boolean" -Policy $Policy -Value {
+            param($item) if ($item.RemoveOnUninstall) { "True" } else { "False" }
+        }))
+
+    $lines.Add("function PayloadRecognizesManualHash(Index: Integer; Hash: String): Boolean;")
+    $lines.Add("begin")
+    $lines.Add("  Result := False;")
+    $lines.Add("  case Index of")
+    for ($index = 0; $index -lt $Policy.Count; $index++) {
+        $item = $Policy[$index]
+        if (-not $item.RecognizedManualUpgrade) {
+            $expression = "False"
+        }
+        else {
+            $hashes = @($item.InstalledHash) + @($item.PreviousHashes)
+            $checks = @($hashes | Select-Object -Unique | ForEach-Object {
+                "(CompareText(Hash, $(ConvertTo-InnoString $_)) = 0)"
+            })
+            $expression = $checks -join " or "
+        }
+        $lines.Add("    ${index}: Result := ${expression};")
+    }
+    $lines.Add("  end;")
+    $lines.Add("end;")
+    $lines.Add("")
+    Set-Content -LiteralPath $Path -Value $lines -Encoding Ascii
+}
+
 $script:ProjectRoot = (Resolve-Path -LiteralPath (Join-Path $PSScriptRoot "..")).Path
 $buildspecPath = Join-Path $ProjectRoot "buildspec.json"
 $installerScript = Join-Path $ProjectRoot "installer\obs-auto-framing.iss"
@@ -80,6 +159,16 @@ if ($Matches[1] -cne $version) {
 $stagingPath = ConvertTo-ProjectPath -Path $StagingRoot
 $outputPath = ConvertTo-ProjectPath -Path $OutputDir
 Assert-InstallerStaging -StagingRoot $stagingPath
+$payloadPolicy = @(Get-ResolvedInstallerPayloadPolicy -StagingRoot $stagingPath)
+for ($index = 0; $index -lt $payloadPolicy.Count; $index++) {
+    $item = $payloadPolicy[$index]
+    $destinationDirectory = Split-Path -Parent $item.RelativePath
+    if ($installerText -notlike "*$($item.StagingPath)*" -or
+        $installerText -notlike "*DestDir: `"{app}\$destinationDirectory`"*"-or
+        $installerText -notlike "*ShouldInstallPayload($index)*") {
+        throw "Inno Setup [Files] entry does not match payload descriptor '$($item.Id)'."
+    }
+}
 
 $packageBaseName = "$pluginName-v$version-windows-x64"
 $zipPath = Join-Path $outputPath "$packageBaseName.zip"
@@ -92,24 +181,12 @@ $iscc = Resolve-InnoSetupCompiler -ExplicitPath $InnoSetupPath
 $installerBaseName = "$packageBaseName-installer"
 $installerPath = Join-Path $outputPath "$installerBaseName.exe"
 $checksumPath = "$installerPath.sha256"
+$policyIncludePath = Join-Path $outputPath "installer-payload-policy.generated.iss"
+New-InnoPayloadPolicyInclude -Policy $payloadPolicy -Path $policyIncludePath
 foreach ($oldOutput in @($installerPath, $checksumPath)) {
     if (Test-Path -LiteralPath $oldOutput -PathType Leaf) {
         Remove-Item -LiteralPath $oldOutput -Force
     }
-}
-
-$hashDefinitions = @{
-    PluginHash = (Get-FileHash -Algorithm SHA256 -LiteralPath (Join-Path $stagingPath "obs-plugins\64bit\obs-auto-framing.dll")).Hash.ToLowerInvariant()
-    RuntimeHash = (Get-FileHash -Algorithm SHA256 -LiteralPath (Join-Path $stagingPath "obs-plugins\64bit\onnxruntime.dll")).Hash.ToLowerInvariant()
-    EffectHash = (Get-FileHash -Algorithm SHA256 -LiteralPath (Join-Path $stagingPath "data\obs-plugins\obs-auto-framing\effects\crop.effect")).Hash.ToLowerInvariant()
-    LocaleHash = (Get-FileHash -Algorithm SHA256 -LiteralPath (Join-Path $stagingPath "data\obs-plugins\obs-auto-framing\locale\en-US.ini")).Hash.ToLowerInvariant()
-    ModelHash = (Get-FileHash -Algorithm SHA256 -LiteralPath (Join-Path $stagingPath "data\obs-plugins\obs-auto-framing\models\yolox_tiny.onnx")).Hash.ToLowerInvariant()
-    InstallDocHash = (Get-FileHash -Algorithm SHA256 -LiteralPath (Join-Path $stagingPath "docs\install.md")).Hash.ToLowerInvariant()
-    TroubleshootingDocHash = (Get-FileHash -Algorithm SHA256 -LiteralPath (Join-Path $stagingPath "docs\troubleshooting.md")).Hash.ToLowerInvariant()
-    LicenseHash = (Get-FileHash -Algorithm SHA256 -LiteralPath (Join-Path $stagingPath "LICENSE")).Hash.ToLowerInvariant()
-    ReadmeHash = (Get-FileHash -Algorithm SHA256 -LiteralPath (Join-Path $stagingPath "README.md")).Hash.ToLowerInvariant()
-    SecurityHash = (Get-FileHash -Algorithm SHA256 -LiteralPath (Join-Path $stagingPath "SECURITY.md")).Hash.ToLowerInvariant()
-    NoticesHash = (Get-FileHash -Algorithm SHA256 -LiteralPath (Join-Path $stagingPath "THIRD_PARTY_NOTICES.md")).Hash.ToLowerInvariant()
 }
 
 $isccArguments = @(
@@ -119,11 +196,9 @@ $isccArguments = @(
     "/DOutputBaseFilename=$installerBaseName",
     "/DAppVersion=$version",
     "/DReleaseChannel=$releaseChannel",
-    "/DAppPublisher=$publisher"
+    "/DAppPublisher=$publisher",
+    "/DPolicyIncludePath=$policyIncludePath"
 )
-foreach ($entry in $hashDefinitions.GetEnumerator()) {
-    $isccArguments += "/D$($entry.Key)=$($entry.Value)"
-}
 $isccArguments += $installerScript
 
 & $iscc @isccArguments
