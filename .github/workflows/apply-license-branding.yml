@@ -1,0 +1,84 @@
+name: Apply license and branding update
+
+on:
+  push:
+    branches:
+      - agent/gpl-branding-update
+
+permissions:
+  contents: write
+
+jobs:
+  apply-update:
+    if: github.actor != 'github-actions[bot]'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out branch
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          fetch-depth: 0
+
+      - name: Replace branding and license references
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 <<'PY'
+          from pathlib import Path
+          import subprocess
+
+          old = "OBS Auto Framing"
+          new = "Auto Framing For OBS"
+          result = subprocess.run(
+              ["git", "grep", "-Il", old],
+              check=False,
+              capture_output=True,
+              text=True,
+          )
+          for name in filter(None, result.stdout.splitlines()):
+              path = Path(name)
+              text = path.read_text(encoding="utf-8")
+              updated = text.replace(old, new)
+              if updated != text:
+                  path.write_text(updated, encoding="utf-8", newline="")
+
+          readme = Path("README.md")
+          text = readme.read_text(encoding="utf-8")
+          old_license = "This project is licensed under the MIT License. See [LICENSE](LICENSE)."
+          new_license = (
+              "This project is licensed under the GNU General Public License version 2 or "
+              "(at your option) any later version (`GPL-2.0-or-later`). See [LICENSE](LICENSE)."
+          )
+          if old_license not in text:
+              raise SystemExit("Expected README MIT license statement was not found")
+          readme.write_text(text.replace(old_license, new_license), encoding="utf-8", newline="")
+          PY
+
+          curl --fail --silent --show-error --location \
+            https://www.gnu.org/licenses/old-licenses/gpl-2.0.txt \
+            --output /tmp/gpl-2.0.txt
+          grep -q "GNU GENERAL PUBLIC LICENSE" /tmp/gpl-2.0.txt
+          grep -q "Version 2, June 1991" /tmp/gpl-2.0.txt
+
+          cat > LICENSE <<'EOF'
+          Auto Framing For OBS is free software licensed under the GNU General Public
+          License, version 2 or (at your option) any later version.
+
+          Copyright (C) 2026 Auto Framing For OBS contributors
+
+          The complete GNU General Public License version 2 text follows.
+
+          EOF
+          cat /tmp/gpl-2.0.txt >> LICENSE
+
+          rm .github/workflows/apply-license-branding.yml
+          git diff --check
+
+      - name: Commit changes
+        shell: bash
+        run: |
+          set -euo pipefail
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add -A
+          git commit -m "Relicense and update user-facing branding"
+          git push origin HEAD:agent/gpl-branding-update
